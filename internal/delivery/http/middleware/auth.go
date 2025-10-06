@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"be-parkir/internal/domain/entities"
 	"be-parkir/internal/usecase"
 	"net/http"
 	"strings"
@@ -78,7 +79,10 @@ func RoleMiddleware(requiredRole string) gin.HandlerFunc {
 			return
 		}
 
-		if userRole != requiredRole {
+		// Convert userRole to string for comparison
+		userRoleStr := string(userRole.(entities.UserRole))
+
+		if userRoleStr != requiredRole {
 			c.JSON(http.StatusForbidden, gin.H{
 				"success": false,
 				"message": "Insufficient permissions",

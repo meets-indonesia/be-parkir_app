@@ -66,9 +66,13 @@ func Load() (*Config, error) {
 	viper.SetDefault("REDIS_PORT", "6379")
 	viper.SetDefault("REDIS_PASSWORD", "")
 	viper.SetDefault("REDIS_DB", "0")
-	viper.SetDefault("JWT_SECRET", "your-secret-key")
+	// JWT_SECRET must be provided via environment variable
 	viper.SetDefault("JWT_ACCESS_EXPIRY", "15m")
 	viper.SetDefault("JWT_REFRESH_EXPIRY", "7d")
+	viper.SetDefault("API_KEY_REQUIRED", "true")
+	viper.SetDefault("API_KEY_HEADER", "X-API-Key")
+	viper.SetDefault("CORS_ALLOW_CREDENTIALS", "true")
+	viper.SetDefault("CORS_MAX_AGE", "86400")
 
 	// Enable reading from environment variables
 	viper.AutomaticEnv()
@@ -117,8 +121,8 @@ func Load() (*Config, error) {
 	}
 
 	// Validate required fields
-	if config.JWT.SecretKey == "your-secret-key" {
-		return nil, fmt.Errorf("JWT_SECRET must be set")
+	if config.JWT.SecretKey == "" {
+		return nil, fmt.Errorf("JWT_SECRET environment variable must be set")
 	}
 
 	return config, nil

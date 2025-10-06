@@ -1,0 +1,664 @@
+{
+  "info": {
+    "_postman_id": "be-parkir-api-collection",
+    "name": "Be-Parkir API",
+    "description": "Complete API collection for Be-Parkir Digital Parking System",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Register Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Admin System\",\n  \"email\": \"admin@parkir.com\",\n  \"phone\": \"08123456789\",\n  \"password\": \"admin123\",\n  \"role\": \"admin\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Register Jukir",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jukir Sample\",\n  \"email\": \"jukir@parkir.com\",\n  \"phone\": \"08123456790\",\n  \"password\": \"jukir123\",\n  \"role\": \"jukir\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Login Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('admin_token', response.data.access_token);",
+                  "    pm.environment.set('admin_user_id', response.data.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@parkir.com\",\n  \"password\": \"admin123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Login Jukir",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('jukir_token', response.data.access_token);",
+                  "    pm.environment.set('jukir_user_id', response.data.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jukir@parkir.com\",\n  \"password\": \"jukir123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Management",
+      "item": [
+        {
+          "name": "Get Admin Overview",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/overview",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "overview"]
+            }
+          }
+        },
+        {
+          "name": "Create Parking Area",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('area_id', response.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Parkir Mall Palembang\",\n  \"address\": \"Jl. Sudirman No. 1, Palembang\",\n  \"latitude\": -2.9761,\n  \"longitude\": 104.7754,\n  \"hourly_rate\": 2000.00\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/areas",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "areas"]
+            }
+          }
+        },
+        {
+          "name": "Create Jukir Account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('jukir_id', response.data.id);",
+                  "    pm.environment.set('qr_token', response.data.qr_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": {{jukir_user_id}},\n  \"jukir_code\": \"JUK001\",\n  \"area_id\": {{area_id}}\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/jukirs",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "jukirs"]
+            }
+          }
+        },
+        {
+          "name": "Activate Jukir",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/jukirs/{{jukir_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "jukirs", "{{jukir_id}}", "status"]
+            }
+          }
+        },
+        {
+          "name": "Get All Jukirs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/jukirs",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "jukirs"]
+            }
+          }
+        },
+        {
+          "name": "Get Admin Reports",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/reports?start_date=2025-10-06&end_date=2025-10-06",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "reports"],
+              "query": [
+                {
+                  "key": "start_date",
+                  "value": "2025-10-06"
+                },
+                {
+                  "key": "end_date",
+                  "value": "2025-10-06"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Anonymous Parking",
+      "item": [
+        {
+          "name": "Get Nearby Areas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/parking/locations?latitude=-2.9761&longitude=104.7754&radius=1.0",
+              "host": ["{{base_url}}"],
+              "path": ["parking", "locations"],
+              "query": [
+                {
+                  "key": "latitude",
+                  "value": "-2.9761"
+                },
+                {
+                  "key": "longitude",
+                  "value": "104.7754"
+                },
+                {
+                  "key": "radius",
+                  "value": "1.0"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "QR Check-in",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('session_id', response.data.session_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"qr_token\": \"{{qr_token}}\",\n  \"latitude\": -2.9761,\n  \"longitude\": 104.7754,\n  \"vehicle_type\": \"mobil\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/parking/checkin",
+              "host": ["{{base_url}}"],
+              "path": ["parking", "checkin"]
+            }
+          }
+        },
+        {
+          "name": "Get Active Session",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/parking/active?qr_token={{qr_token}}",
+              "host": ["{{base_url}}"],
+              "path": ["parking", "active"],
+              "query": [
+                {
+                  "key": "qr_token",
+                  "value": "{{qr_token}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "QR Check-out",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"qr_token\": \"{{qr_token}}\",\n  \"latitude\": -2.9761,\n  \"longitude\": 104.7754\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/parking/checkout",
+              "host": ["{{base_url}}"],
+              "path": ["parking", "checkout"]
+            }
+          }
+        },
+        {
+          "name": "Get Parking History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/parking/history?plat_nomor=B1234ABC",
+              "host": ["{{base_url}}"],
+              "path": ["parking", "history"],
+              "query": [
+                {
+                  "key": "plat_nomor",
+                  "value": "B1234ABC"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Jukir Operations",
+      "item": [
+        {
+          "name": "Get Jukir Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jukir_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/jukir/dashboard",
+              "host": ["{{base_url}}"],
+              "path": ["jukir", "dashboard"]
+            }
+          }
+        },
+        {
+          "name": "Get Pending Payments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jukir_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/jukir/pending-payments",
+              "host": ["{{base_url}}"],
+              "path": ["jukir", "pending-payments"]
+            }
+          }
+        },
+        {
+          "name": "Manual Check-in",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('manual_session_id', response.data.session_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jukir_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"plat_nomor\": \"B1234ABC\",\n  \"vehicle_type\": \"mobil\",\n  \"waktu_masuk\": \"2025-10-06T07:00:00Z\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/jukir/manual-checkin",
+              "host": ["{{base_url}}"],
+              "path": ["jukir", "manual-checkin"]
+            }
+          }
+        },
+        {
+          "name": "Manual Check-out",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jukir_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"session_id\": {{manual_session_id}},\n  \"waktu_keluar\": \"2025-10-06T08:00:00Z\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/jukir/manual-checkout",
+              "host": ["{{base_url}}"],
+              "path": ["jukir", "manual-checkout"]
+            }
+          }
+        },
+        {
+          "name": "Confirm Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jukir_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"session_id\": {{session_id}},\n  \"payment_method\": \"cash\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/jukir/confirm-payment",
+              "host": ["{{base_url}}"],
+              "path": ["jukir", "confirm-payment"]
+            }
+          }
+        },
+        {
+          "name": "Get QR Code",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jukir_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/jukir/qr-code",
+              "host": ["{{base_url}}"],
+              "path": ["jukir", "qr-code"]
+            }
+          }
+        },
+        {
+          "name": "Get Daily Report",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jukir_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/jukir/daily-report?date=2025-10-06",
+              "host": ["{{base_url}}"],
+              "path": ["jukir", "daily-report"],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "2025-10-06"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "User Management",
+      "item": [
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/profile",
+              "host": ["{{base_url}}"],
+              "path": ["profile"]
+            }
+          }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Admin System Updated\",\n  \"phone\": \"08123456789\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/profile",
+              "host": ["{{base_url}}"],
+              "path": ["profile"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [""]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [""]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "api_key",
+      "value": "be-parkir-api-key-2025",
+      "type": "string"
+    }
+  ]
+}

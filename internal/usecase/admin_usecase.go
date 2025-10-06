@@ -11,7 +11,7 @@ type AdminUsecase interface {
 	GetOverview() (map[string]interface{}, error)
 	GetJukirs(limit, offset int) ([]entities.Jukir, int64, error)
 	CreateJukir(req *entities.CreateJukirRequest) (*entities.Jukir, error)
-	ApproveJukir(jukirID uint) error
+	UpdateJukirStatus(jukirID uint, req *entities.UpdateJukirRequest) (*entities.Jukir, error)
 	GetReports(startDate, endDate time.Time, areaID *uint) (map[string]interface{}, error)
 	GetAllSessions(limit, offset int, filters map[string]interface{}) ([]entities.ParkingSession, int64, error)
 	CreateParkingArea(req *entities.CreateParkingAreaRequest) (*entities.ParkingArea, error)
@@ -164,18 +164,28 @@ func (u *adminUsecase) CreateJukir(req *entities.CreateJukirRequest) (*entities.
 	return jukir, nil
 }
 
-func (u *adminUsecase) ApproveJukir(jukirID uint) error {
+func (u *adminUsecase) UpdateJukirStatus(jukirID uint, req *entities.UpdateJukirRequest) (*entities.Jukir, error) {
 	jukir, err := u.jukirRepo.GetByID(jukirID)
 	if err != nil {
-		return errors.New("jukir not found")
+		return nil, errors.New("jukir not found")
 	}
 
-	jukir.Status = entities.JukirStatusActive
+	// Update fields if provided
+	if req.JukirCode != nil {
+		jukir.JukirCode = *req.JukirCode
+	}
+	if req.AreaID != nil {
+		jukir.AreaID = *req.AreaID
+	}
+	if req.Status != nil {
+		jukir.Status = *req.Status
+	}
+
 	if err := u.jukirRepo.Update(jukir); err != nil {
-		return errors.New("failed to approve jukir")
+		return nil, errors.New("failed to update jukir status")
 	}
 
-	return nil
+	return jukir, nil
 }
 
 func (u *adminUsecase) GetReports(startDate, endDate time.Time, areaID *uint) (map[string]interface{}, error) {

@@ -55,9 +55,8 @@ type ConfirmPaymentResponse struct {
 
 type PendingPaymentResponse struct {
 	SessionID     uint      `json:"session_id"`
-	UserID        uint      `json:"user_id"`
-	UserName      string    `json:"user_name"`
-	UserPhone     string    `json:"user_phone"`
+	PlatNomor     string    `json:"plat_nomor"`
+	VehicleType   string    `json:"vehicle_type"`
 	CheckinTime   time.Time `json:"checkin_time"`
 	CheckoutTime  time.Time `json:"checkout_time"`
 	Duration      int       `json:"duration"` // in minutes

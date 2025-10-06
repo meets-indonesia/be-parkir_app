@@ -1,10 +1,14 @@
-# Parking Digital API - Palembang
+# Be-Parkir API - Palembang Digital Parking System
 
-A comprehensive REST API backend for the Palembang Digital Parking Application built with Go, featuring role-based access control for Customers, Jukirs (parking attendants), and Admins.
+A comprehensive REST API backend for the Palembang Digital Parking Application built with Go, featuring anonymous parking, manual record management, and role-based access control for Jukirs (parking attendants) and Admins.
 
 ## 🚀 Features
 
-- **Multi-role Authentication**: Customer, Jukir, and Admin roles with JWT-based authentication
+- **Anonymous Parking**: No user account required for QR-based parking sessions
+- **Manual Record Management**: Jukirs can create manual parking records with license plates
+- **Multi-role Authentication**: Jukir and Admin roles with JWT-based authentication
+- **Vehicle Type Support**: Separate handling for 'mobil' (car) and 'motor' (motorcycle)
+- **Configurable Pricing System**: Each parking area can have its own hourly rate (default IDR 2000)
 - **QR Code Integration**: Check-in/check-out system using QR codes
 - **GPS Verification**: Location validation within 50m radius of parking areas
 - **Real-time Payment Processing**: Cash payment confirmation by Jukirs
@@ -132,17 +136,22 @@ be-parkir/
 | POST   | `/api/v1/auth/refresh`  | Refresh JWT token | No            |
 | POST   | `/api/v1/auth/logout`   | User logout       | Yes           |
 
-### Customer Endpoints
+### Anonymous Parking Endpoints
 
-| Method | Endpoint                    | Description           | Auth Required  |
-| ------ | --------------------------- | --------------------- | -------------- |
-| GET    | `/api/v1/profile`           | Get user profile      | Yes (Customer) |
-| PUT    | `/api/v1/profile`           | Update profile        | Yes (Customer) |
-| GET    | `/api/v1/parking/locations` | Get nearby areas      | Yes (Customer) |
-| POST   | `/api/v1/parking/checkin`   | Start parking session | Yes (Customer) |
-| POST   | `/api/v1/parking/checkout`  | End parking session   | Yes (Customer) |
-| GET    | `/api/v1/parking/active`    | Get active session    | Yes (Customer) |
-| GET    | `/api/v1/parking/history`   | Get parking history   | Yes (Customer) |
+| Method | Endpoint                    | Description           | Auth Required |
+| ------ | --------------------------- | --------------------- | ------------- |
+| GET    | `/api/v1/parking/locations` | Get nearby areas      | No            |
+| POST   | `/api/v1/parking/checkin`   | Start parking session | No            |
+| POST   | `/api/v1/parking/checkout`  | End parking session   | No            |
+| GET    | `/api/v1/parking/active`    | Get active session    | No            |
+| GET    | `/api/v1/parking/history`   | Get parking history   | No            |
+
+### User Management Endpoints
+
+| Method | Endpoint          | Description      | Auth Required |
+| ------ | ----------------- | ---------------- | ------------- |
+| GET    | `/api/v1/profile` | Get user profile | Yes           |
+| PUT    | `/api/v1/profile` | Update profile   | Yes           |
 
 ### Jukir Endpoints
 
@@ -154,19 +163,21 @@ be-parkir/
 | POST   | `/api/v1/jukir/confirm-payment`  | Confirm cash payment | Yes (Jukir)   |
 | GET    | `/api/v1/jukir/qr-code`          | Get QR code info     | Yes (Jukir)   |
 | GET    | `/api/v1/jukir/daily-report`     | Get daily report     | Yes (Jukir)   |
+| POST   | `/api/v1/jukir/manual-checkin`   | Manual check-in      | Yes (Jukir)   |
+| POST   | `/api/v1/jukir/manual-checkout`  | Manual check-out     | Yes (Jukir)   |
 
 ### Admin Endpoints
 
-| Method | Endpoint                            | Description         | Auth Required |
-| ------ | ----------------------------------- | ------------------- | ------------- |
-| GET    | `/api/v1/admin/overview`            | System overview     | Yes (Admin)   |
-| GET    | `/api/v1/admin/jukirs`              | List all jukirs     | Yes (Admin)   |
-| POST   | `/api/v1/admin/jukirs`              | Create jukir        | Yes (Admin)   |
-| PUT    | `/api/v1/admin/jukirs/{id}/approve` | Approve jukir       | Yes (Admin)   |
-| GET    | `/api/v1/admin/reports`             | Generate reports    | Yes (Admin)   |
-| GET    | `/api/v1/admin/sessions`            | All sessions        | Yes (Admin)   |
-| POST   | `/api/v1/admin/areas`               | Create parking area | Yes (Admin)   |
-| PUT    | `/api/v1/admin/areas/{id}`          | Update parking area | Yes (Admin)   |
+| Method | Endpoint                           | Description         | Auth Required |
+| ------ | ---------------------------------- | ------------------- | ------------- |
+| GET    | `/api/v1/admin/overview`           | System overview     | Yes (Admin)   |
+| GET    | `/api/v1/admin/jukirs`             | List all jukirs     | Yes (Admin)   |
+| POST   | `/api/v1/admin/jukirs`             | Create jukir        | Yes (Admin)   |
+| PUT    | `/api/v1/admin/jukirs/{id}/status` | Update jukir status | Yes (Admin)   |
+| GET    | `/api/v1/admin/reports`            | Generate reports    | Yes (Admin)   |
+| GET    | `/api/v1/admin/sessions`           | All sessions        | Yes (Admin)   |
+| POST   | `/api/v1/admin/areas`              | Create parking area | Yes (Admin)   |
+| PUT    | `/api/v1/admin/areas/{id}`         | Update parking area | Yes (Admin)   |
 
 ## 🔧 Configuration
 
@@ -192,6 +203,23 @@ be-parkir/
 
 ## 🧪 Testing
 
+### API Testing with Postman
+
+The project includes comprehensive Postman collections for testing all business processes:
+
+1. **Import Postman Collection**:
+
+   - `Be-Parkir-API.postman_collection.json` - Complete API collection
+   - `Be-Parkir-Environment.postman_environment.json` - Environment variables
+
+2. **Test Business Flows**:
+   - Anonymous parking (QR-based check-in/out)
+   - Manual record management by Jukirs
+   - Admin management (areas, jukirs, reports)
+   - Payment processing and confirmation
+
+### Unit Testing
+
 ```bash
 # Run all tests
 make test
@@ -202,6 +230,17 @@ go test -v -cover ./...
 # Run specific test package
 go test -v ./internal/usecase
 ```
+
+### Business Process Testing
+
+All business processes have been tested and verified:
+
+- ✅ **Anonymous Parking**: QR-based sessions without user accounts
+- ✅ **Manual Records**: Jukir-created records with license plates
+- ✅ **Vehicle Types**: Support for 'mobil' and 'motor'
+- ✅ **Configurable Pricing**: Area-specific hourly rates
+- ✅ **Payment Processing**: Cash confirmation by Jukirs
+- ✅ **Role-based Access**: Admin and Jukir permissions
 
 ## 🐳 Docker Commands
 
@@ -262,15 +301,18 @@ make docker-logs-prod
 ### Parking Sessions Table
 
 - `id` (Primary Key)
-- `user_id` (Foreign Key to Users)
 - `jukir_id` (Foreign Key to Jukirs)
 - `area_id` (Foreign Key to Parking Areas)
+- `qr_token` (VARCHAR, Nullable)
+- `plat_nomor` (VARCHAR, Nullable)
+- `vehicle_type` (ENUM: mobil, motor)
+- `is_manual_record` (BOOLEAN)
 - `checkin_time` (TIMESTAMP)
 - `checkout_time` (TIMESTAMP, Nullable)
 - `duration` (INTEGER, in minutes)
 - `total_cost` (DECIMAL)
 - `payment_status` (ENUM: pending, paid, failed)
-- `session_status` (ENUM: active, pending_payment, completed, cancelled, timeout)
+- `session_status` (ENUM: active, pending_payment, completed, cancelled)
 - `created_at`, `updated_at`, `deleted_at`
 
 ### Payments Table
@@ -284,13 +326,39 @@ make docker-logs-prod
 - `status` (ENUM: pending, paid, failed, refunded)
 - `created_at`, `updated_at`, `deleted_at`
 
+## 🔄 Business Flow
+
+### Anonymous Parking Flow
+
+1. **Find Parking**: User scans QR code or uses GPS to find nearby areas
+2. **Check-in**: Anonymous QR-based check-in (no account required)
+3. **Park**: Vehicle parks in the designated area
+4. **Check-out**: Anonymous QR-based check-out with area-specific pricing
+5. **Payment**: Jukir confirms cash payment
+
+### Manual Record Flow (Jukir)
+
+1. **Manual Check-in**: Jukir creates record with license plate and vehicle type
+2. **Time Tracking**: System tracks entry time
+3. **Manual Check-out**: Jukir records exit time
+4. **Area-based Pricing**: Cost based on the parking area's hourly rate
+5. **Payment Confirmation**: Jukir confirms cash payment
+
+### Admin Management Flow
+
+1. **Area Management**: Create and manage parking areas
+2. **Jukir Management**: Create, activate, and manage Jukir accounts
+3. **Monitoring**: View system statistics and reports
+4. **Reporting**: Generate revenue and activity reports
+
 ## 🔒 Security Features
 
 - **JWT Authentication**: Secure token-based authentication
 - **Role-based Access Control**: Granular permissions for different user types
 - **Password Hashing**: Bcrypt for secure password storage
 - **Input Validation**: Comprehensive request validation
-- **Rate Limiting**: Protection against spam and abuse
+- **GPS Verification**: Location validation within 50m radius
+- **Anonymous Sessions**: No personal data required for parking
 - **CORS Support**: Configurable cross-origin resource sharing
 - **SQL Injection Protection**: GORM ORM with parameterized queries
 
@@ -358,14 +426,23 @@ For support and questions:
 
 ## 🗺️ Roadmap
 
-- [ ] Mobile app integration
-- [ ] Real-time notifications
-- [ ] Payment gateway integration
-- [ ] Advanced analytics dashboard
-- [ ] Multi-language support
-- [ ] API rate limiting
-- [ ] Automated testing pipeline
-- [ ] Performance monitoring
+- [x] **Core API Development** - Complete REST API with all endpoints
+- [x] **Anonymous Parking System** - QR-based parking without user accounts
+- [x] **Manual Record Management** - Jukir-created parking records
+- [x] **Vehicle Type Support** - Separate handling for cars and motorcycles
+- [x] **Configurable Pricing System** - Area-specific hourly rates
+- [x] **Role-based Access Control** - Admin and Jukir permissions
+- [x] **Docker Containerization** - Complete development and production setup
+- [x] **API Documentation** - Swagger integration and Postman collections
+- [x] **Business Process Testing** - Comprehensive testing of all flows
+- [ ] **Mobile app integration**
+- [ ] **Real-time notifications**
+- [ ] **Payment gateway integration** (QRIS, Bank Transfer)
+- [ ] **Advanced analytics dashboard**
+- [ ] **Multi-language support**
+- [ ] **API rate limiting**
+- [ ] **Automated testing pipeline**
+- [ ] **Performance monitoring**
 
 ---
 

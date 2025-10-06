@@ -6,11 +6,13 @@ import (
 	"be-parkir/internal/config"
 	"be-parkir/internal/delivery/http"
 	"be-parkir/internal/delivery/http/handler"
+	"be-parkir/internal/delivery/http/middleware"
 	"be-parkir/internal/repository"
 	"be-parkir/internal/usecase"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 )
 
 // @title Parking Digital API
@@ -77,13 +79,29 @@ func main() {
 	// Initialize HTTP handlers
 	handlers := handler.NewHandlers(authUC, userUC, jukirUC, parkingUC, adminUC, logger)
 
+	// Setup middleware configurations
+	apiKeyConfig := &middleware.APIKeyConfig{
+		APIKeys:    []string{viper.GetString("API_KEY")},
+		HeaderName: viper.GetString("API_KEY_HEADER"),
+		Required:   viper.GetBool("API_KEY_REQUIRED"),
+	}
+
+	corsConfig := &middleware.CORSConfig{
+		AllowOrigins:     []string{viper.GetString("CORS_ALLOW_ORIGINS")},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With", "X-API-Key"},
+		ExposeHeaders:    []string{"Content-Length", "Content-Type", "X-Total-Count"},
+		AllowCredentials: viper.GetBool("CORS_ALLOW_CREDENTIALS"),
+		MaxAge:           viper.GetInt("CORS_MAX_AGE"),
+	}
+
 	// Setup routes
 	router := gin.Default()
 	http.SetupRoutes(router, handlers, usecase.JWTConfig{
 		SecretKey:     cfg.JWT.SecretKey,
 		AccessExpiry:  cfg.JWT.AccessExpiry,
 		RefreshExpiry: cfg.JWT.RefreshExpiry,
-	})
+	}, apiKeyConfig, corsConfig)
 
 	// Start server
 	logger.Info("Starting server on port :8080")

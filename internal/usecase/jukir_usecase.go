@@ -82,11 +82,15 @@ func (u *jukirUsecase) GetPendingPayments(jukirID uint) ([]entities.PendingPayme
 
 	var pendingPayments []entities.PendingPaymentResponse
 	for _, session := range sessions {
+		platNomor := ""
+		if session.PlatNomor != nil {
+			platNomor = *session.PlatNomor
+		}
+
 		pendingPayments = append(pendingPayments, entities.PendingPaymentResponse{
 			SessionID:     session.ID,
-			UserID:        session.UserID,
-			UserName:      session.User.Name,
-			UserPhone:     session.User.Phone,
+			PlatNomor:     platNomor,
+			VehicleType:   string(session.VehicleType),
 			CheckinTime:   session.CheckinTime,
 			CheckoutTime:  *session.CheckoutTime,
 			Duration:      *session.Duration,

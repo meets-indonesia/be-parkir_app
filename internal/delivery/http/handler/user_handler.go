@@ -124,30 +124,49 @@ func (h *Handlers) UpdateProfile(c *gin.Context) {
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/parking/locations [get]
 func (h *Handlers) GetNearbyAreas(c *gin.Context) {
-	var req entities.NearbyAreasRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.Logger.Error("Failed to bind JSON:", err)
+	// Get query parameters
+	latitudeStr := c.Query("latitude")
+	longitudeStr := c.Query("longitude")
+	radiusStr := c.DefaultQuery("radius", "1.0")
+
+	if latitudeStr == "" || longitudeStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "Invalid request data",
-			"error":   err.Error(),
+			"message": "latitude and longitude are required",
 		})
 		return
 	}
 
-	// Validate request
-	validate := validator.New()
-	if err := validate.Struct(req); err != nil {
-		h.Logger.Error("Validation failed:", err)
+	latitude, err := strconv.ParseFloat(latitudeStr, 64)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "Validation failed",
-			"error":   err.Error(),
+			"message": "Invalid latitude format",
 		})
 		return
 	}
 
-	response, err := h.ParkingUC.GetNearbyAreas(&req)
+	longitude, err := strconv.ParseFloat(longitudeStr, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid longitude format",
+		})
+		return
+	}
+
+	radius, err := strconv.ParseFloat(radiusStr, 64)
+	if err != nil {
+		radius = 1.0
+	}
+
+	req := &entities.NearbyAreasRequest{
+		Latitude:  latitude,
+		Longitude: longitude,
+		Radius:    radius,
+	}
+
+	response, err := h.ParkingUC.GetNearbyAreas(req)
 	if err != nil {
 		h.Logger.Error("Failed to get nearby areas:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -166,26 +185,17 @@ func (h *Handlers) GetNearbyAreas(c *gin.Context) {
 
 // Checkin godoc
 // @Summary Check in to parking
-// @Description Start a parking session by scanning QR code
+// @Description Start a parking session by scanning QR code (anonymous)
 // @Tags parking
 // @Accept json
 // @Produce json
-// @Security BearerAuth
 // @Param request body entities.CheckinRequest true "Check-in data"
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]interface{}
-// @Failure 401 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/parking/checkin [post]
 func (h *Handlers) Checkin(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "User not authenticated",
-		})
-		return
-	}
+	// No authentication required for anonymous parking
 
 	var req entities.CheckinRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -210,7 +220,7 @@ func (h *Handlers) Checkin(c *gin.Context) {
 		return
 	}
 
-	response, err := h.ParkingUC.Checkin(userID.(uint), &req)
+	response, err := h.ParkingUC.Checkin(&req)
 	if err != nil {
 		h.Logger.Error("Check-in failed:", err)
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -229,26 +239,17 @@ func (h *Handlers) Checkin(c *gin.Context) {
 
 // Checkout godoc
 // @Summary Check out from parking
-// @Description End a parking session by scanning QR code
+// @Description End a parking session by scanning QR code (anonymous)
 // @Tags parking
 // @Accept json
 // @Produce json
-// @Security BearerAuth
 // @Param request body entities.CheckoutRequest true "Check-out data"
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]interface{}
-// @Failure 401 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/parking/checkout [post]
 func (h *Handlers) Checkout(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "User not authenticated",
-		})
-		return
-	}
+	// No authentication required for anonymous parking
 
 	var req entities.CheckoutRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -273,7 +274,7 @@ func (h *Handlers) Checkout(c *gin.Context) {
 		return
 	}
 
-	response, err := h.ParkingUC.Checkout(userID.(uint), &req)
+	response, err := h.ParkingUC.Checkout(&req)
 	if err != nil {
 		h.Logger.Error("Check-out failed:", err)
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -292,27 +293,27 @@ func (h *Handlers) Checkout(c *gin.Context) {
 
 // GetActiveSession godoc
 // @Summary Get active parking session
-// @Description Get current user's active parking session
+// @Description Get active parking session by QR token (anonymous)
 // @Tags parking
 // @Accept json
 // @Produce json
-// @Security BearerAuth
+// @Param qr_token query string true "QR token"
 // @Success 200 {object} map[string]interface{}
-// @Failure 401 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
 // @Failure 404 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/parking/active [get]
 func (h *Handlers) GetActiveSession(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
+	qrToken := c.Query("qr_token")
+	if qrToken == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "User not authenticated",
+			"message": "QR token is required",
 		})
 		return
 	}
 
-	response, err := h.ParkingUC.GetActiveSession(userID.(uint))
+	response, err := h.ParkingUC.GetActiveSession(qrToken)
 	if err != nil {
 		h.Logger.Error("Failed to get active session:", err)
 		c.JSON(http.StatusNotFound, gin.H{
@@ -331,23 +332,23 @@ func (h *Handlers) GetActiveSession(c *gin.Context) {
 
 // GetParkingHistory godoc
 // @Summary Get parking history
-// @Description Get user's parking session history
+// @Description Get parking session history by license plate (anonymous)
 // @Tags parking
 // @Accept json
 // @Produce json
-// @Security BearerAuth
+// @Param plat_nomor query string true "License plate number"
 // @Param limit query int false "Limit" default(10)
 // @Param offset query int false "Offset" default(0)
 // @Success 200 {object} map[string]interface{}
-// @Failure 401 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/parking/history [get]
 func (h *Handlers) GetParkingHistory(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
+	platNomor := c.Query("plat_nomor")
+	if platNomor == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "User not authenticated",
+			"message": "License plate number is required",
 		})
 		return
 	}
@@ -365,7 +366,7 @@ func (h *Handlers) GetParkingHistory(c *gin.Context) {
 		offset = 0
 	}
 
-	response, err := h.ParkingUC.GetUserHistory(userID.(uint), limit, offset)
+	response, err := h.ParkingUC.GetHistoryByPlatNomor(platNomor, limit, offset)
 	if err != nil {
 		h.Logger.Error("Failed to get parking history:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{

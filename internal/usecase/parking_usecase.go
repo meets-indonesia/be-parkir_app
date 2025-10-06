@@ -10,10 +10,12 @@ import (
 
 type ParkingUsecase interface {
 	GetNearbyAreas(req *entities.NearbyAreasRequest) (*entities.NearbyAreasResponse, error)
-	Checkin(userID uint, req *entities.CheckinRequest) (*entities.CheckinResponse, error)
-	Checkout(userID uint, req *entities.CheckoutRequest) (*entities.CheckoutResponse, error)
-	GetActiveSession(userID uint) (*entities.ActiveSessionResponse, error)
-	GetUserHistory(userID uint, limit, offset int) (*entities.SessionHistoryResponse, error)
+	Checkin(req *entities.CheckinRequest) (*entities.CheckinResponse, error)
+	Checkout(req *entities.CheckoutRequest) (*entities.CheckoutResponse, error)
+	GetActiveSession(qrToken string) (*entities.ActiveSessionResponse, error)
+	GetHistoryByPlatNomor(platNomor string, limit, offset int) (*entities.SessionHistoryResponse, error)
+	ManualCheckin(jukirID uint, req *entities.ManualCheckinRequest) (*entities.ManualCheckinResponse, error)
+	ManualCheckout(jukirID uint, req *entities.ManualCheckoutRequest) (*entities.ManualCheckoutResponse, error)
 }
 
 type parkingUsecase struct {
@@ -60,11 +62,11 @@ func (u *parkingUsecase) GetNearbyAreas(req *entities.NearbyAreasRequest) (*enti
 	}, nil
 }
 
-func (u *parkingUsecase) Checkin(userID uint, req *entities.CheckinRequest) (*entities.CheckinResponse, error) {
-	// Check if user already has an active session
-	activeSession, err := u.sessionRepo.GetActiveByUserID(userID)
+func (u *parkingUsecase) Checkin(req *entities.CheckinRequest) (*entities.CheckinResponse, error) {
+	// Check if there's already an active session for this QR token
+	activeSession, err := u.sessionRepo.GetActiveByQRToken(req.QRToken)
 	if err == nil && activeSession != nil {
-		return nil, errors.New("user already has an active parking session")
+		return nil, errors.New("there is already an active parking session for this QR code")
 	}
 
 	// Get jukir by QR token
@@ -86,12 +88,14 @@ func (u *parkingUsecase) Checkin(userID uint, req *entities.CheckinRequest) (*en
 
 	// Create parking session
 	session := &entities.ParkingSession{
-		UserID:        userID,
-		JukirID:       &jukir.ID,
-		AreaID:        jukir.AreaID,
-		CheckinTime:   time.Now(),
-		PaymentStatus: entities.PaymentStatusPending,
-		SessionStatus: entities.SessionStatusActive,
+		JukirID:        &jukir.ID,
+		AreaID:         jukir.AreaID,
+		VehicleType:    req.VehicleType,
+		PlatNomor:      req.PlatNomor, // Optional for QR-based sessions
+		IsManualRecord: false,
+		CheckinTime:    time.Now(),
+		PaymentStatus:  entities.PaymentStatusPending,
+		SessionStatus:  entities.SessionStatusActive,
 	}
 
 	if err := u.sessionRepo.Create(session); err != nil {
@@ -106,11 +110,21 @@ func (u *parkingUsecase) Checkin(userID uint, req *entities.CheckinRequest) (*en
 	}, nil
 }
 
-func (u *parkingUsecase) Checkout(userID uint, req *entities.CheckoutRequest) (*entities.CheckoutResponse, error) {
-	// Get active session
-	session, err := u.sessionRepo.GetActiveByUserID(userID)
-	if err != nil {
-		return nil, errors.New("no active parking session found")
+func (u *parkingUsecase) Checkout(req *entities.CheckoutRequest) (*entities.CheckoutResponse, error) {
+	var session *entities.ParkingSession
+	var err error
+
+	// Get active session - check by license plate if provided, otherwise by QR token
+	if req.PlatNomor != nil && *req.PlatNomor != "" {
+		session, err = u.sessionRepo.GetActiveByPlatNomor(*req.PlatNomor)
+		if err != nil {
+			return nil, errors.New("no active parking session found for this license plate")
+		}
+	} else {
+		session, err = u.sessionRepo.GetActiveByQRToken(req.QRToken)
+		if err != nil {
+			return nil, errors.New("no active parking session found for this QR code")
+		}
 	}
 
 	// Get jukir by QR token
@@ -130,10 +144,10 @@ func (u *parkingUsecase) Checkout(userID uint, req *entities.CheckoutRequest) (*
 		return nil, errors.New("you must be within 50 meters of the parking area")
 	}
 
-	// Calculate duration and cost
+	// Calculate duration and cost based on area's hourly rate
 	checkoutTime := time.Now()
 	duration := int(checkoutTime.Sub(session.CheckinTime).Minutes())
-	totalCost := math.Ceil(float64(duration)/60.0) * jukir.Area.HourlyRate
+	totalCost := session.Area.HourlyRate // Use area's hourly rate
 
 	// Update session
 	session.CheckoutTime = &checkoutTime
@@ -166,15 +180,15 @@ func (u *parkingUsecase) Checkout(userID uint, req *entities.CheckoutRequest) (*
 	}, nil
 }
 
-func (u *parkingUsecase) GetActiveSession(userID uint) (*entities.ActiveSessionResponse, error) {
-	session, err := u.sessionRepo.GetActiveByUserID(userID)
+func (u *parkingUsecase) GetActiveSession(qrToken string) (*entities.ActiveSessionResponse, error) {
+	session, err := u.sessionRepo.GetActiveByQRToken(qrToken)
 	if err != nil {
-		return nil, errors.New("no active parking session found")
+		return nil, errors.New("no active parking session found for this QR code")
 	}
 
-	// Calculate current cost
-	duration := int(time.Now().Sub(session.CheckinTime).Minutes())
-	currentCost := math.Ceil(float64(duration)/60.0) * session.Area.HourlyRate
+	// Calculate current cost based on area's hourly rate
+	duration := int(time.Since(session.CheckinTime).Minutes())
+	currentCost := session.Area.HourlyRate // Use area's hourly rate
 
 	return &entities.ActiveSessionResponse{
 		SessionID:   session.ID,
@@ -186,8 +200,8 @@ func (u *parkingUsecase) GetActiveSession(userID uint) (*entities.ActiveSessionR
 	}, nil
 }
 
-func (u *parkingUsecase) GetUserHistory(userID uint, limit, offset int) (*entities.SessionHistoryResponse, error) {
-	sessions, count, err := u.sessionRepo.GetUserHistory(userID, limit, offset)
+func (u *parkingUsecase) GetHistoryByPlatNomor(platNomor string, limit, offset int) (*entities.SessionHistoryResponse, error) {
+	sessions, count, err := u.sessionRepo.GetHistoryByPlatNomor(platNomor, limit, offset)
 	if err != nil {
 		return nil, errors.New("failed to get parking history")
 	}
@@ -213,4 +227,112 @@ func (u *parkingUsecase) calculateDistance(lat1, lng1, lat2, lng2 float64) float
 	distance := R * c
 
 	return distance
+}
+
+func (u *parkingUsecase) ManualCheckin(jukirID uint, req *entities.ManualCheckinRequest) (*entities.ManualCheckinResponse, error) {
+	// Get jukir info
+	jukir, err := u.jukirRepo.GetByID(jukirID)
+	if err != nil {
+		return nil, errors.New("jukir not found")
+	}
+
+	// Check if jukir is active
+	if jukir.Status != entities.JukirStatusActive {
+		return nil, errors.New("jukir is not active")
+	}
+
+	// Create manual parking session
+	session := &entities.ParkingSession{
+		JukirID:        &jukir.ID,
+		AreaID:         jukir.AreaID,
+		VehicleType:    req.VehicleType,
+		PlatNomor:      &req.PlatNomor,
+		IsManualRecord: true,
+		CheckinTime:    req.WaktuMasuk,
+		PaymentStatus:  entities.PaymentStatusPending,
+		SessionStatus:  entities.SessionStatusActive,
+	}
+
+	if err := u.sessionRepo.Create(session); err != nil {
+		return nil, errors.New("failed to create manual parking session")
+	}
+
+	platNomor := ""
+	if session.PlatNomor != nil {
+		platNomor = *session.PlatNomor
+	}
+
+	return &entities.ManualCheckinResponse{
+		SessionID:   session.ID,
+		PlatNomor:   platNomor,
+		VehicleType: string(session.VehicleType),
+		WaktuMasuk:  session.CheckinTime,
+		Area:        jukir.Area.Name,
+		ParkingCost: jukir.Area.HourlyRate, // Use area's hourly rate
+	}, nil
+}
+
+func (u *parkingUsecase) ManualCheckout(jukirID uint, req *entities.ManualCheckoutRequest) (*entities.ManualCheckoutResponse, error) {
+	// Get session
+	session, err := u.sessionRepo.GetByID(req.SessionID)
+	if err != nil {
+		return nil, errors.New("session not found")
+	}
+
+	// Verify session belongs to this jukir
+	if session.JukirID == nil || *session.JukirID != jukirID {
+		return nil, errors.New("session does not belong to this jukir")
+	}
+
+	// Check if session is active
+	if session.SessionStatus != entities.SessionStatusActive {
+		return nil, errors.New("session is not active")
+	}
+
+	// Check if it's a manual record
+	if !session.IsManualRecord {
+		return nil, errors.New("session is not a manual record")
+	}
+
+	// Calculate duration and cost based on area's hourly rate
+	duration := int(req.WaktuKeluar.Sub(session.CheckinTime).Minutes())
+	totalCost := session.Area.HourlyRate // Use area's hourly rate
+
+	// Update session
+	session.CheckoutTime = &req.WaktuKeluar
+	session.Duration = &duration
+	session.TotalCost = &totalCost
+	session.SessionStatus = entities.SessionStatusPendingPayment
+
+	if err := u.sessionRepo.Update(session); err != nil {
+		return nil, errors.New("failed to update manual parking session")
+	}
+
+	// Create payment record
+	payment := &entities.Payment{
+		SessionID:     session.ID,
+		Amount:        totalCost,
+		PaymentMethod: entities.PaymentMethodCash,
+		Status:        entities.PaymentStatusPending,
+	}
+
+	if err := u.paymentRepo.Create(payment); err != nil {
+		return nil, errors.New("failed to create payment record")
+	}
+
+	platNomor := ""
+	if session.PlatNomor != nil {
+		platNomor = *session.PlatNomor
+	}
+
+	return &entities.ManualCheckoutResponse{
+		SessionID:     session.ID,
+		PlatNomor:     platNomor,
+		VehicleType:   string(session.VehicleType),
+		WaktuMasuk:    session.CheckinTime,
+		WaktuKeluar:   req.WaktuKeluar,
+		Duration:      duration,
+		TotalCost:     totalCost,
+		PaymentStatus: string(entities.PaymentStatusPending),
+	}, nil
 }

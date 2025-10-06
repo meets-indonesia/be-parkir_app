@@ -144,20 +144,21 @@ func (h *Handlers) CreateJukir(c *gin.Context) {
 	})
 }
 
-// ApproveJukir godoc
-// @Summary Approve jukir
-// @Description Approve a pending jukir account
+// UpdateJukirStatus godoc
+// @Summary Update jukir status
+// @Description Update jukir status (active/inactive)
 // @Tags admin
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "Jukir ID"
+// @Param request body entities.UpdateJukirRequest true "Jukir status update data"
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
-// @Router /api/v1/admin/jukirs/{id}/approve [put]
-func (h *Handlers) ApproveJukir(c *gin.Context) {
+// @Router /api/v1/admin/jukirs/{id}/status [put]
+func (h *Handlers) UpdateJukirStatus(c *gin.Context) {
 	idStr := c.Param("id")
 	jukirID, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
@@ -168,9 +169,32 @@ func (h *Handlers) ApproveJukir(c *gin.Context) {
 		return
 	}
 
-	err = h.AdminUC.ApproveJukir(uint(jukirID))
+	var req entities.UpdateJukirRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.Logger.Error("Failed to bind JSON:", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid request data",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	// Validate request
+	validate := validator.New()
+	if err := validate.Struct(req); err != nil {
+		h.Logger.Error("Validation failed:", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Validation failed",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	response, err := h.AdminUC.UpdateJukirStatus(uint(jukirID), &req)
 	if err != nil {
-		h.Logger.Error("Failed to approve jukir:", err)
+		h.Logger.Error("Failed to update jukir status:", err)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": err.Error(),
@@ -180,7 +204,8 @@ func (h *Handlers) ApproveJukir(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": "Jukir approved successfully",
+		"message": "Jukir status updated successfully",
+		"data":    response,
 	})
 }
 

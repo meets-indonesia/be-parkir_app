@@ -273,3 +273,129 @@ func (h *Handlers) GetDailyReport(c *gin.Context) {
 		"data":    response,
 	})
 }
+
+// ManualCheckin godoc
+// @Summary Manual check-in
+// @Description Create manual parking record for check-in
+// @Tags jukir
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body entities.ManualCheckinRequest true "Manual check-in data"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/jukir/manual-checkin [post]
+func (h *Handlers) ManualCheckin(c *gin.Context) {
+	jukirID, exists := c.Get("jukir_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "Jukir not authenticated",
+		})
+		return
+	}
+
+	var req entities.ManualCheckinRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.Logger.Error("Failed to bind JSON:", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid request data",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	// Validate request
+	validate := validator.New()
+	if err := validate.Struct(req); err != nil {
+		h.Logger.Error("Validation failed:", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Validation failed",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	response, err := h.ParkingUC.ManualCheckin(jukirID.(uint), &req)
+	if err != nil {
+		h.Logger.Error("Manual check-in failed:", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Manual check-in successful",
+		"data":    response,
+	})
+}
+
+// ManualCheckout godoc
+// @Summary Manual check-out
+// @Description Create manual parking record for check-out
+// @Tags jukir
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body entities.ManualCheckoutRequest true "Manual check-out data"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/jukir/manual-checkout [post]
+func (h *Handlers) ManualCheckout(c *gin.Context) {
+	jukirID, exists := c.Get("jukir_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "Jukir not authenticated",
+		})
+		return
+	}
+
+	var req entities.ManualCheckoutRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.Logger.Error("Failed to bind JSON:", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid request data",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	// Validate request
+	validate := validator.New()
+	if err := validate.Struct(req); err != nil {
+		h.Logger.Error("Validation failed:", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Validation failed",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	response, err := h.ParkingUC.ManualCheckout(jukirID.(uint), &req)
+	if err != nil {
+		h.Logger.Error("Manual check-out failed:", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Manual check-out successful",
+		"data":    response,
+	})
+}
