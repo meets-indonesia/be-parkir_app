@@ -11,9 +11,11 @@ A comprehensive REST API backend for the Palembang Digital Parking Application b
 - **Configurable Pricing System**: Each parking area can have its own hourly rate (default IDR 2000)
 - **QR Code Integration**: Check-in/check-out system using QR codes
 - **GPS Verification**: Location validation within 50m radius of parking areas
-- **Real-time Payment Processing**: Cash payment confirmation by Jukirs
+- **Real-time Payment Processing**: Cash and QRIS payment confirmation by Jukirs
+- **Server-Sent Events (SSE)**: Real-time notifications for jukirs (event-driven updates)
 - **Comprehensive Dashboard**: Statistics and reporting for all user types
-- **RESTful API**: Well-documented endpoints with Swagger integration
+- **RESTful API**: 27 well-documented endpoints with Swagger/OpenAPI
+- **Interactive Documentation**: Swagger UI for API exploration and testing
 - **Docker Support**: Complete containerization with multi-stage builds
 - **Clean Architecture**: Domain-driven design with separation of concerns
 
@@ -93,9 +95,13 @@ be-parkir/
    ```
 
 5. **Access the application**
-   - API: http://localhost:8080
-   - Swagger Docs: http://localhost:8080/swagger/index.html
+   - API Base URL: http://localhost:8080/api/v1
+   - **Swagger UI**: http://localhost:8080/swagger/index.html (Interactive API documentation)
    - Health Check: http://localhost:8080/health
+6. **Regenerate Swagger docs** (if you modify code annotations)
+   ```bash
+   swag init -g cmd/server/main.go -o docs
+   ```
 
 ### Manual Setup
 

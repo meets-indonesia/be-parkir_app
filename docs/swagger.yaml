@@ -1,0 +1,1338 @@
+basePath: /api/v1
+definitions:
+  entities.AreaStatus:
+    enum:
+    - active
+    - inactive
+    - maintenance
+    type: string
+    x-enum-varnames:
+    - AreaStatusActive
+    - AreaStatusInactive
+    - AreaStatusMaintenance
+  entities.CheckinRequest:
+    properties:
+      latitude:
+        type: number
+      longitude:
+        type: number
+      plat_nomor:
+        maxLength: 20
+        minLength: 1
+        type: string
+      qr_token:
+        type: string
+      vehicle_type:
+        allOf:
+        - $ref: '#/definitions/entities.VehicleType'
+        enum:
+        - mobil
+        - motor
+    required:
+    - latitude
+    - longitude
+    - qr_token
+    - vehicle_type
+    type: object
+  entities.CheckoutRequest:
+    properties:
+      latitude:
+        type: number
+      longitude:
+        type: number
+      plat_nomor:
+        maxLength: 20
+        minLength: 1
+        type: string
+      qr_token:
+        type: string
+    required:
+    - latitude
+    - longitude
+    - qr_token
+    type: object
+  entities.ConfirmPaymentRequest:
+    properties:
+      payment_method:
+        allOf:
+        - $ref: '#/definitions/entities.PaymentMethod'
+        enum:
+        - cash
+        - qris
+        - bank_transfer
+      session_id:
+        type: integer
+    required:
+    - payment_method
+    - session_id
+    type: object
+  entities.CreateJukirRequest:
+    properties:
+      area_id:
+        type: integer
+      jukir_code:
+        maxLength: 20
+        minLength: 3
+        type: string
+      user_id:
+        type: integer
+    required:
+    - area_id
+    - jukir_code
+    - user_id
+    type: object
+  entities.CreateParkingAreaRequest:
+    properties:
+      address:
+        maxLength: 255
+        minLength: 10
+        type: string
+      hourly_rate:
+        minimum: 0
+        type: number
+      latitude:
+        type: number
+      longitude:
+        type: number
+      name:
+        maxLength: 100
+        minLength: 2
+        type: string
+    required:
+    - address
+    - hourly_rate
+    - latitude
+    - longitude
+    - name
+    type: object
+  entities.CreateUserRequest:
+    properties:
+      email:
+        type: string
+      name:
+        maxLength: 100
+        minLength: 2
+        type: string
+      password:
+        minLength: 6
+        type: string
+      phone:
+        maxLength: 15
+        minLength: 10
+        type: string
+      role:
+        allOf:
+        - $ref: '#/definitions/entities.UserRole'
+        enum:
+        - customer
+        - jukir
+        - admin
+    required:
+    - email
+    - name
+    - password
+    - phone
+    - role
+    type: object
+  entities.JukirStatus:
+    enum:
+    - active
+    - inactive
+    - pending
+    type: string
+    x-enum-varnames:
+    - JukirStatusActive
+    - JukirStatusInactive
+    - JukirStatusPending
+  entities.LoginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  entities.ManualCheckinRequest:
+    properties:
+      plat_nomor:
+        maxLength: 20
+        minLength: 1
+        type: string
+      vehicle_type:
+        allOf:
+        - $ref: '#/definitions/entities.VehicleType'
+        enum:
+        - mobil
+        - motor
+      waktu_masuk:
+        type: string
+    required:
+    - plat_nomor
+    - vehicle_type
+    - waktu_masuk
+    type: object
+  entities.ManualCheckoutRequest:
+    properties:
+      session_id:
+        type: integer
+      waktu_keluar:
+        type: string
+    required:
+    - session_id
+    - waktu_keluar
+    type: object
+  entities.NearbyAreasRequest:
+    properties:
+      latitude:
+        type: number
+      longitude:
+        type: number
+      radius:
+        maximum: 10
+        minimum: 0.1
+        type: number
+    required:
+    - latitude
+    - longitude
+    type: object
+  entities.PaymentMethod:
+    enum:
+    - cash
+    - qris
+    - bank_transfer
+    type: string
+    x-enum-varnames:
+    - PaymentMethodCash
+    - PaymentMethodQRIS
+    - PaymentMethodBankTransfer
+  entities.RefreshTokenRequest:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  entities.UpdateJukirRequest:
+    properties:
+      area_id:
+        type: integer
+      jukir_code:
+        maxLength: 20
+        minLength: 3
+        type: string
+      status:
+        allOf:
+        - $ref: '#/definitions/entities.JukirStatus'
+        enum:
+        - active
+        - inactive
+        - pending
+    type: object
+  entities.UpdateParkingAreaRequest:
+    properties:
+      address:
+        maxLength: 255
+        minLength: 10
+        type: string
+      hourly_rate:
+        minimum: 0
+        type: number
+      latitude:
+        type: number
+      longitude:
+        type: number
+      name:
+        maxLength: 100
+        minLength: 2
+        type: string
+      status:
+        allOf:
+        - $ref: '#/definitions/entities.AreaStatus'
+        enum:
+        - active
+        - inactive
+        - maintenance
+    type: object
+  entities.UpdateUserRequest:
+    properties:
+      email:
+        type: string
+      name:
+        maxLength: 100
+        minLength: 2
+        type: string
+      phone:
+        maxLength: 15
+        minLength: 10
+        type: string
+    type: object
+  entities.UserRole:
+    enum:
+    - customer
+    - jukir
+    - admin
+    type: string
+    x-enum-varnames:
+    - RoleCustomer
+    - RoleJukir
+    - RoleAdmin
+  entities.VehicleType:
+    enum:
+    - mobil
+    - motor
+    type: string
+    x-enum-varnames:
+    - VehicleTypeMobil
+    - VehicleTypeMotor
+host: localhost:8080
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: REST API for Palembang Digital Parking Application
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: Parking Digital API
+  version: "1.0"
+paths:
+  /admin/sse-status:
+    get:
+      description: Get the number of jukirs currently connected to the event stream
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Connection status
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get SSE connection status
+      tags:
+      - Admin
+  /api/v1/admin/areas:
+    post:
+      consumes:
+      - application/json
+      description: Create a new parking area
+      parameters:
+      - description: Parking area data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/entities.CreateParkingAreaRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create parking area
+      tags:
+      - admin
+  /api/v1/admin/areas/{id}:
+    put:
+      consumes:
+      - application/json
+      description: Update an existing parking area
+      parameters:
+      - description: Area ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Parking area update data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/entities.UpdateParkingAreaRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update parking area
+      tags:
+      - admin
+  /api/v1/admin/jukirs:
+    get:
+      consumes:
+      - application/json
+      description: Get list of all jukirs with pagination
+      parameters:
+      - default: 10
+        description: Limit
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get all jukirs
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      description: Create a new jukir account
+      parameters:
+      - description: Jukir creation data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/entities.CreateJukirRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create new jukir
+      tags:
+      - admin
+  /api/v1/admin/jukirs/{id}/status:
+    put:
+      consumes:
+      - application/json
+      description: Update jukir status (active/inactive)
+      parameters:
+      - description: Jukir ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Jukir status update data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/entities.UpdateJukirRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update jukir status
+      tags:
+      - admin
+  /api/v1/admin/overview:
+    get:
+      consumes:
+      - application/json
+      description: Get system-wide statistics for admin dashboard
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get admin overview
+      tags:
+      - admin
+  /api/v1/admin/reports:
+    get:
+      consumes:
+      - application/json
+      description: Generate reports by date range and area
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        in: query
+        name: start_date
+        required: true
+        type: string
+      - description: End date (YYYY-MM-DD)
+        in: query
+        name: end_date
+        required: true
+        type: string
+      - description: Area ID
+        in: query
+        name: area_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get reports
+      tags:
+      - admin
+  /api/v1/admin/sessions:
+    get:
+      consumes:
+      - application/json
+      description: Get all parking sessions with filters
+      parameters:
+      - default: 10
+        description: Limit
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Offset
+        in: query
+        name: offset
+        type: integer
+      - description: Session status
+        in: query
+        name: status
+        type: string
+      - description: Area ID
+        in: query
+        name: area_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get all sessions
+      tags:
+      - admin
+  /api/v1/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate user and return JWT tokens
+      parameters:
+      - description: Login credentials
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/entities.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Login user
+      tags:
+      - auth
+  /api/v1/auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: Invalidate user's refresh token
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Logout user
+      tags:
+      - auth
+  /api/v1/auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Refresh access token using refresh token
+      parameters:
+      - description: Refresh token data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/entities.RefreshTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Refresh JWT token
+      tags:
+      - auth
+  /api/v1/auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Register a new user account
+      parameters:
+      - description: User registration data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/entities.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Register a new user
+      tags:
+      - auth
+  /api/v1/jukir/active-sessions:
+    get:
+      consumes:
+      - application/json
+      description: Get list of active parking sessions in jukir's area
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get active sessions
+      tags:
+      - jukir
+  /api/v1/jukir/confirm-payment:
+    post:
+      consumes:
+      - application/json
+      description: Confirm cash payment from customer
+      parameters:
+      - description: Payment confirmation data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/entities.ConfirmPaymentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Confirm payment
+      tags:
+      - jukir
+  /api/v1/jukir/daily-report:
+    get:
+      consumes:
+      - application/json
+      description: Get daily transaction summary for jukir
+      parameters:
+      - default: today
+        description: Date (YYYY-MM-DD)
+        in: query
+        name: date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get daily report
+      tags:
+      - jukir
+  /api/v1/jukir/dashboard:
+    get:
+      consumes:
+      - application/json
+      description: Get jukir dashboard statistics
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get jukir dashboard
+      tags:
+      - jukir
+  /api/v1/jukir/manual-checkin:
+    post:
+      consumes:
+      - application/json
+      description: Create manual parking record for check-in
+      parameters:
+      - description: Manual check-in data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/entities.ManualCheckinRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Manual check-in
+      tags:
+      - jukir
+  /api/v1/jukir/manual-checkout:
+    post:
+      consumes:
+      - application/json
+      description: Create manual parking record for check-out
+      parameters:
+      - description: Manual check-out data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/entities.ManualCheckoutRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Manual check-out
+      tags:
+      - jukir
+  /api/v1/jukir/pending-payments:
+    get:
+      consumes:
+      - application/json
+      description: Get list of customers with pending payments
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get pending payments
+      tags:
+      - jukir
+  /api/v1/jukir/qr-code:
+    get:
+      consumes:
+      - application/json
+      description: Get jukir's QR code information
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get QR code info
+      tags:
+      - jukir
+  /api/v1/parking/active:
+    get:
+      consumes:
+      - application/json
+      description: Get active parking session by QR token (anonymous)
+      parameters:
+      - description: QR token
+        in: query
+        name: qr_token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get active parking session
+      tags:
+      - parking
+  /api/v1/parking/checkin:
+    post:
+      consumes:
+      - application/json
+      description: Start a parking session by scanning QR code (anonymous)
+      parameters:
+      - description: Check-in data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/entities.CheckinRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Check in to parking
+      tags:
+      - parking
+  /api/v1/parking/checkout:
+    post:
+      consumes:
+      - application/json
+      description: End a parking session by scanning QR code (anonymous)
+      parameters:
+      - description: Check-out data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/entities.CheckoutRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Check out from parking
+      tags:
+      - parking
+  /api/v1/parking/history:
+    get:
+      consumes:
+      - application/json
+      description: Get parking session history by license plate (anonymous)
+      parameters:
+      - description: License plate number
+        in: query
+        name: plat_nomor
+        required: true
+        type: string
+      - default: 10
+        description: Limit
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get parking history
+      tags:
+      - parking
+  /api/v1/parking/locations:
+    get:
+      consumes:
+      - application/json
+      description: Get parking areas within specified radius of user's location
+      parameters:
+      - description: Location data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/entities.NearbyAreasRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get nearby parking areas
+      tags:
+      - parking
+  /api/v1/profile:
+    get:
+      consumes:
+      - application/json
+      description: Get current user's profile information
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get user profile
+      tags:
+      - user
+    put:
+      consumes:
+      - application/json
+      description: Update current user's profile information
+      parameters:
+      - description: Profile update data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/entities.UpdateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update user profile
+      tags:
+      - user
+  /jukir/events:
+    get:
+      description: Get real-time updates for jukir sessions, payments, and stats via
+        Server-Sent Events
+      produces:
+      - text/event-stream
+      responses:
+        "200":
+          description: SSE stream
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Not a jukir
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Stream jukir events (SSE)
+      tags:
+      - Jukir
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
