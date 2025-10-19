@@ -65,6 +65,10 @@ func main() {
 	sessionRepo := repository.NewParkingSessionRepository(db)
 	paymentRepo := repository.NewPaymentRepository(db)
 
+	// Initialize Event Manager for SSE
+	eventManager := usecase.NewEventManager()
+	logger.Info("Event Manager initialized for SSE")
+
 	// Initialize use cases
 	authUC := usecase.NewAuthUsecase(userRepo, redisClient, usecase.JWTConfig{
 		SecretKey:     cfg.JWT.SecretKey,
@@ -72,12 +76,12 @@ func main() {
 		RefreshExpiry: cfg.JWT.RefreshExpiry,
 	})
 	userUC := usecase.NewUserUsecase(userRepo)
-	jukirUC := usecase.NewJukirUsecase(jukirRepo, areaRepo, sessionRepo, paymentRepo)
-	parkingUC := usecase.NewParkingUsecase(sessionRepo, areaRepo, userRepo, jukirRepo, paymentRepo)
+	jukirUC := usecase.NewJukirUsecase(jukirRepo, areaRepo, sessionRepo, paymentRepo, eventManager)
+	parkingUC := usecase.NewParkingUsecase(sessionRepo, areaRepo, userRepo, jukirRepo, paymentRepo, eventManager)
 	adminUC := usecase.NewAdminUsecase(userRepo, jukirRepo, areaRepo, sessionRepo, paymentRepo)
 
 	// Initialize HTTP handlers
-	handlers := handler.NewHandlers(authUC, userUC, jukirUC, parkingUC, adminUC, logger)
+	handlers := handler.NewHandlers(authUC, userUC, jukirUC, parkingUC, adminUC, eventManager, logger)
 
 	// Setup middleware configurations
 	apiKeyConfig := &middleware.APIKeyConfig{

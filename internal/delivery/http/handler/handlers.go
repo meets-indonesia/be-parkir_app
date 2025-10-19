@@ -7,21 +7,23 @@ import (
 )
 
 type Handlers struct {
-	AuthUC    usecase.AuthUsecase
-	UserUC    usecase.UserUsecase
-	JukirUC   usecase.JukirUsecase
-	ParkingUC usecase.ParkingUsecase
-	AdminUC   usecase.AdminUsecase
-	Logger    *logrus.Logger
+	AuthUC       usecase.AuthUsecase
+	UserUC       usecase.UserUsecase
+	JukirUC      usecase.JukirUsecase
+	ParkingUC    usecase.ParkingUsecase
+	AdminUC      usecase.AdminUsecase
+	EventManager *usecase.EventManager
+	Logger       *logrus.Logger
 }
 
-func NewHandlers(authUC usecase.AuthUsecase, userUC usecase.UserUsecase, jukirUC usecase.JukirUsecase, parkingUC usecase.ParkingUsecase, adminUC usecase.AdminUsecase, logger *logrus.Logger) *Handlers {
+func NewHandlers(authUC usecase.AuthUsecase, userUC usecase.UserUsecase, jukirUC usecase.JukirUsecase, parkingUC usecase.ParkingUsecase, adminUC usecase.AdminUsecase, eventManager *usecase.EventManager, logger *logrus.Logger) *Handlers {
 	return &Handlers{
-		AuthUC:    authUC,
-		UserUC:    userUC,
-		JukirUC:   jukirUC,
-		ParkingUC: parkingUC,
-		AdminUC:   adminUC,
-		Logger:    logger,
+		AuthUC:       authUC,
+		UserUC:       userUC,
+		JukirUC:      jukirUC,
+		ParkingUC:    parkingUC,
+		AdminUC:      adminUC,
+		EventManager: eventManager,
+		Logger:       logger,
 	}
 }

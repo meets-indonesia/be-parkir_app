@@ -19,20 +19,22 @@ type ParkingUsecase interface {
 }
 
 type parkingUsecase struct {
-	sessionRepo repository.ParkingSessionRepository
-	areaRepo    repository.ParkingAreaRepository
-	userRepo    repository.UserRepository
-	jukirRepo   repository.JukirRepository
-	paymentRepo repository.PaymentRepository
+	sessionRepo  repository.ParkingSessionRepository
+	areaRepo     repository.ParkingAreaRepository
+	userRepo     repository.UserRepository
+	jukirRepo    repository.JukirRepository
+	paymentRepo  repository.PaymentRepository
+	eventManager *EventManager
 }
 
-func NewParkingUsecase(sessionRepo repository.ParkingSessionRepository, areaRepo repository.ParkingAreaRepository, userRepo repository.UserRepository, jukirRepo repository.JukirRepository, paymentRepo repository.PaymentRepository) ParkingUsecase {
+func NewParkingUsecase(sessionRepo repository.ParkingSessionRepository, areaRepo repository.ParkingAreaRepository, userRepo repository.UserRepository, jukirRepo repository.JukirRepository, paymentRepo repository.PaymentRepository, eventManager *EventManager) ParkingUsecase {
 	return &parkingUsecase{
-		sessionRepo: sessionRepo,
-		areaRepo:    areaRepo,
-		userRepo:    userRepo,
-		jukirRepo:   jukirRepo,
-		paymentRepo: paymentRepo,
+		sessionRepo:  sessionRepo,
+		areaRepo:     areaRepo,
+		userRepo:     userRepo,
+		jukirRepo:    jukirRepo,
+		paymentRepo:  paymentRepo,
+		eventManager: eventManager,
 	}
 }
 
@@ -169,6 +171,27 @@ func (u *parkingUsecase) Checkout(req *entities.CheckoutRequest) (*entities.Chec
 
 	if err := u.paymentRepo.Create(payment); err != nil {
 		return nil, errors.New("failed to create payment record")
+	}
+
+	// Notify jukir about checkout via SSE
+	if session.JukirID != nil {
+		platNomor := ""
+		if session.PlatNomor != nil {
+			platNomor = *session.PlatNomor
+		}
+
+		eventData := SessionUpdateEvent{
+			SessionID:    session.ID,
+			PlatNomor:    platNomor,
+			VehicleType:  string(session.VehicleType),
+			OldStatus:    string(entities.SessionStatusActive),
+			NewStatus:    string(entities.SessionStatusPendingPayment),
+			TotalCost:    totalCost,
+			CheckoutTime: checkoutTime.Format(time.RFC3339),
+			CheckinTime:  session.CheckinTime.Format(time.RFC3339),
+		}
+
+		u.eventManager.NotifyJukir(*session.JukirID, EventSessionUpdate, eventData)
 	}
 
 	return &entities.CheckoutResponse{
@@ -324,6 +347,20 @@ func (u *parkingUsecase) ManualCheckout(jukirID uint, req *entities.ManualChecko
 	if session.PlatNomor != nil {
 		platNomor = *session.PlatNomor
 	}
+
+	// Notify jukir about manual checkout via SSE
+	eventData := SessionUpdateEvent{
+		SessionID:    session.ID,
+		PlatNomor:    platNomor,
+		VehicleType:  string(session.VehicleType),
+		OldStatus:    string(entities.SessionStatusActive),
+		NewStatus:    string(entities.SessionStatusPendingPayment),
+		TotalCost:    totalCost,
+		CheckoutTime: req.WaktuKeluar.Format(time.RFC3339),
+		CheckinTime:  session.CheckinTime.Format(time.RFC3339),
+	}
+
+	u.eventManager.NotifyJukir(jukirID, EventSessionUpdate, eventData)
 
 	return &entities.ManualCheckoutResponse{
 		SessionID:     session.ID,

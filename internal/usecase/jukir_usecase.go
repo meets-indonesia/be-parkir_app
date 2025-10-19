@@ -18,18 +18,20 @@ type JukirUsecase interface {
 }
 
 type jukirUsecase struct {
-	jukirRepo   repository.JukirRepository
-	areaRepo    repository.ParkingAreaRepository
-	sessionRepo repository.ParkingSessionRepository
-	paymentRepo repository.PaymentRepository
+	jukirRepo    repository.JukirRepository
+	areaRepo     repository.ParkingAreaRepository
+	sessionRepo  repository.ParkingSessionRepository
+	paymentRepo  repository.PaymentRepository
+	eventManager *EventManager
 }
 
-func NewJukirUsecase(jukirRepo repository.JukirRepository, areaRepo repository.ParkingAreaRepository, sessionRepo repository.ParkingSessionRepository, paymentRepo repository.PaymentRepository) JukirUsecase {
+func NewJukirUsecase(jukirRepo repository.JukirRepository, areaRepo repository.ParkingAreaRepository, sessionRepo repository.ParkingSessionRepository, paymentRepo repository.PaymentRepository, eventManager *EventManager) JukirUsecase {
 	return &jukirUsecase{
-		jukirRepo:   jukirRepo,
-		areaRepo:    areaRepo,
-		sessionRepo: sessionRepo,
-		paymentRepo: paymentRepo,
+		jukirRepo:    jukirRepo,
+		areaRepo:     areaRepo,
+		sessionRepo:  sessionRepo,
+		paymentRepo:  paymentRepo,
+		eventManager: eventManager,
 	}
 }
 
@@ -160,6 +162,18 @@ func (u *jukirUsecase) ConfirmPayment(jukirID uint, req *entities.ConfirmPayment
 	if err := u.sessionRepo.Update(session); err != nil {
 		return nil, errors.New("failed to update session status")
 	}
+
+	// Notify jukir about payment confirmation via SSE
+	eventData := PaymentConfirmedEvent{
+		SessionID:     session.ID,
+		PaymentID:     payment.ID,
+		PaymentMethod: string(payment.PaymentMethod),
+		Amount:        payment.Amount,
+		ConfirmedBy:   "Jukir",
+		ConfirmedAt:   payment.ConfirmedAt.Format(time.RFC3339),
+	}
+
+	u.eventManager.NotifyJukir(jukirID, EventPaymentConfirmed, eventData)
 
 	return &entities.ConfirmPaymentResponse{
 		PaymentID:     payment.ID,

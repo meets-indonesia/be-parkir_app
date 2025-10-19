@@ -38,9 +38,9 @@ func SetupRoutes(router *gin.Engine, handlers *handler.Handlers, jwtConfig useca
 			auth.POST("/logout", middleware.AuthMiddleware(handlers.AuthUC), handlers.Logout)
 		}
 
-		// User routes (customer)
+		// User profile routes (all authenticated users)
 		user := v1.Group("/")
-		user.Use(middleware.AuthMiddleware(handlers.AuthUC), middleware.CustomerMiddleware())
+		user.Use(middleware.AuthMiddleware(handlers.AuthUC))
 		{
 			user.GET("/profile", handlers.GetProfile)
 			user.PUT("/profile", handlers.UpdateProfile)
@@ -68,6 +68,7 @@ func SetupRoutes(router *gin.Engine, handlers *handler.Handlers, jwtConfig useca
 			jukir.GET("/daily-report", handlers.GetDailyReport)
 			jukir.POST("/manual-checkin", handlers.ManualCheckin)
 			jukir.POST("/manual-checkout", handlers.ManualCheckout)
+			jukir.GET("/events", handlers.StreamJukirEvents) // SSE endpoint
 		}
 
 		// Admin routes
@@ -82,6 +83,7 @@ func SetupRoutes(router *gin.Engine, handlers *handler.Handlers, jwtConfig useca
 			admin.GET("/sessions", handlers.GetAllSessions)
 			admin.POST("/areas", handlers.CreateParkingArea)
 			admin.PUT("/areas/:id", handlers.UpdateParkingArea)
+			admin.GET("/sse-status", handlers.GetEventStreamStatus) // SSE connection status
 		}
 	}
 }
