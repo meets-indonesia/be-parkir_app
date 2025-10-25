@@ -63,7 +63,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("DB_NAME", "parking_app")
 	viper.SetDefault("DB_SSLMODE", "disable")
 	viper.SetDefault("REDIS_HOST", "localhost")
-	viper.SetDefault("REDIS_PORT", "6379")
+	viper.SetDefault("REDIS_PORT", "6378")
 	viper.SetDefault("REDIS_PASSWORD", "")
 	viper.SetDefault("REDIS_DB", "0")
 	// JWT_SECRET must be provided via environment variable

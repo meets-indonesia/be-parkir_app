@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 
+	_ "be-parkir/docs" // Import swagger docs
 	"be-parkir/internal/config"
 	"be-parkir/internal/delivery/http"
 	"be-parkir/internal/delivery/http/handler"
