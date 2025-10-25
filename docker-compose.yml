@@ -13,7 +13,7 @@ services:
       - DB_NAME=parking_app
       - DB_SSLMODE=disable
       - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_PORT=6378
       - REDIS_PASSWORD=
       - REDIS_DB=0
       - JWT_SECRET=vvmfHfZ68t-pgW-7izB8o5qfWV3_yvBKE9LQXMSIreI
@@ -58,7 +58,7 @@ services:
     volumes:
       - redis_data:/data
     ports:
-      - "6379:6379"
+      - "6378:6378"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
