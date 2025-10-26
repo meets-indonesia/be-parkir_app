@@ -71,7 +71,13 @@ func (h *Handlers) GetJukirs(c *gin.Context) {
 
 	// If revenue is requested, use the new method
 	if includeRevenue {
-		jukirsWithRevenue, count, err := h.AdminUC.GetJukirsWithRevenue(limit, offset)
+		vehicleType := c.Query("vehicle_type")
+		var vehicleTypePtr *string
+		if vehicleType != "" && (vehicleType == "mobil" || vehicleType == "motor") {
+			vehicleTypePtr = &vehicleType
+		}
+
+		jukirsWithRevenue, count, err := h.AdminUC.GetJukirsWithRevenue(limit, offset, vehicleTypePtr)
 		if err != nil {
 			h.Logger.Error("Failed to get jukirs with revenue:", err)
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -91,6 +97,7 @@ func (h *Handlers) GetJukirs(c *gin.Context) {
 					"offset": offset,
 					"total":  count,
 				},
+				"vehicle_type": vehicleType,
 			},
 		})
 		return

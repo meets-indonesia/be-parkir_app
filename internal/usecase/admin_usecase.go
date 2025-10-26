@@ -10,7 +10,7 @@ import (
 type AdminUsecase interface {
 	GetOverview() (map[string]interface{}, error)
 	GetJukirs(limit, offset int) ([]entities.Jukir, int64, error)
-	GetJukirsWithRevenue(limit, offset int) ([]map[string]interface{}, int64, error)
+	GetJukirsWithRevenue(limit, offset int, vehicleType *string) ([]map[string]interface{}, int64, error)
 	CreateJukir(req *entities.CreateJukirRequest) (*entities.Jukir, error)
 	UpdateJukirStatus(jukirID uint, req *entities.UpdateJukirRequest) (*entities.Jukir, error)
 	GetReports(startDate, endDate time.Time, areaID *uint) (map[string]interface{}, error)
@@ -90,13 +90,32 @@ func (u *adminUsecase) GetOverview() (map[string]interface{}, error) {
 	// Calculate vehicles in and out
 	vehiclesIn := 0
 	vehiclesOut := 0
+	vehiclesInMobil := 0
+	vehiclesOutMobil := 0
+	vehiclesInMotor := 0
+	vehiclesOutMotor := 0
+
 	for _, session := range todaySessions {
+		// Count all check-ins
+		vehiclesIn++
+
+		// Count by vehicle type
+		if session.VehicleType == entities.VehicleTypeMobil {
+			vehiclesInMobil++
+			if session.CheckoutTime != nil {
+				vehiclesOutMobil++
+			}
+		} else if session.VehicleType == entities.VehicleTypeMotor {
+			vehiclesInMotor++
+			if session.CheckoutTime != nil {
+				vehiclesOutMotor++
+			}
+		}
+
 		// Check if session has checkout time (vehicle left)
 		if session.CheckoutTime != nil {
 			vehiclesOut++
 		}
-		// Count all check-ins
-		vehiclesIn++
 	}
 
 	// Get total revenue
@@ -158,12 +177,22 @@ func (u *adminUsecase) GetOverview() (map[string]interface{}, error) {
 	}
 
 	return map[string]interface{}{
-		"total_users":        len(totalUsers),
-		"total_jukirs":       len(totalJukirs),
-		"total_areas":        len(totalAreas),
-		"today_sessions":     len(todaySessions),
-		"vehicles_in":        vehiclesIn,
-		"vehicles_out":       vehiclesOut,
+		"total_users":    len(totalUsers),
+		"total_jukirs":   len(totalJukirs),
+		"total_areas":    len(totalAreas),
+		"today_sessions": len(todaySessions),
+		"vehicles_in":    vehiclesIn,
+		"vehicles_out":   vehiclesOut,
+		"vehicles_by_type": map[string]interface{}{
+			"mobil": map[string]interface{}{
+				"in":  vehiclesInMobil,
+				"out": vehiclesOutMobil,
+			},
+			"motor": map[string]interface{}{
+				"in":  vehiclesInMotor,
+				"out": vehiclesOutMotor,
+			},
+		},
 		"active_sessions":    activeSessions,
 		"pending_payments":   pendingPayments,
 		"today_revenue":      totalRevenue,
@@ -185,7 +214,7 @@ func (u *adminUsecase) GetJukirs(limit, offset int) ([]entities.Jukir, int64, er
 }
 
 // GetJukirsWithRevenue returns jukirs with their today's revenue
-func (u *adminUsecase) GetJukirsWithRevenue(limit, offset int) ([]map[string]interface{}, int64, error) {
+func (u *adminUsecase) GetJukirsWithRevenue(limit, offset int, vehicleType *string) ([]map[string]interface{}, int64, error) {
 	jukirs, count, err := u.jukirRepo.List(limit, offset)
 	if err != nil {
 		return nil, 0, errors.New("failed to get jukirs")
@@ -198,14 +227,27 @@ func (u *adminUsecase) GetJukirsWithRevenue(limit, offset int) ([]map[string]int
 	result := make([]map[string]interface{}, 0)
 
 	for _, jukir := range jukirs {
-		// Get today's revenue for this jukir
-		revenue, err := u.paymentRepo.GetJukirDailyRevenue(jukir.ID, time.Now())
-		if err != nil {
-			revenue = 0
-		}
-
 		// Get today's sessions for this jukir's area to count transactions
 		sessions, _ := u.sessionRepo.GetSessionsByArea(jukir.AreaID, startOfDay, endOfDay)
+
+		// Filter by vehicle type if specified
+		if vehicleType != nil && *vehicleType != "" {
+			filteredSessions := []entities.ParkingSession{}
+			for _, session := range sessions {
+				if string(session.VehicleType) == *vehicleType {
+					filteredSessions = append(filteredSessions, session)
+				}
+			}
+			sessions = filteredSessions
+		}
+
+		// Calculate revenue for filtered sessions
+		var revenue float64
+		for _, session := range sessions {
+			if session.PaymentStatus == entities.PaymentStatusPaid && session.TotalCost != nil {
+				revenue += *session.TotalCost
+			}
+		}
 
 		result = append(result, map[string]interface{}{
 			"id":         jukir.ID,
