@@ -10,6 +10,7 @@ import (
 type AdminUsecase interface {
 	GetOverview() (map[string]interface{}, error)
 	GetJukirs(limit, offset int) ([]entities.Jukir, int64, error)
+	GetJukirsWithRevenue(limit, offset int) ([]map[string]interface{}, int64, error)
 	CreateJukir(req *entities.CreateJukirRequest) (*entities.Jukir, error)
 	UpdateJukirStatus(jukirID uint, req *entities.UpdateJukirRequest) (*entities.Jukir, error)
 	GetReports(startDate, endDate time.Time, areaID *uint) (map[string]interface{}, error)
@@ -43,10 +44,21 @@ func (u *adminUsecase) GetOverview() (map[string]interface{}, error) {
 		return nil, errors.New("failed to get total users")
 	}
 
-	// Get total jukirs
+	// Get all jukirs with status breakdown
 	totalJukirs, _, err := u.jukirRepo.List(0, 0)
 	if err != nil {
 		return nil, errors.New("failed to get total jukirs")
+	}
+
+	// Count jukirs by status
+	activeJukirs := 0
+	inactiveJukirs := 0
+	for _, jukir := range totalJukirs {
+		if jukir.Status == entities.JukirStatusActive {
+			activeJukirs++
+		} else if jukir.Status == entities.JukirStatusInactive {
+			inactiveJukirs++
+		}
 	}
 
 	// Get total areas
@@ -75,6 +87,18 @@ func (u *adminUsecase) GetOverview() (map[string]interface{}, error) {
 		todaySessions = append(todaySessions, sessions...)
 	}
 
+	// Calculate vehicles in and out
+	vehiclesIn := 0
+	vehiclesOut := 0
+	for _, session := range todaySessions {
+		// Check if session has checkout time (vehicle left)
+		if session.CheckoutTime != nil {
+			vehiclesOut++
+		}
+		// Count all check-ins
+		vehiclesIn++
+	}
+
 	// Get total revenue
 	totalRevenue, err := u.paymentRepo.GetRevenueByDateRange(startOfDay, endOfDay)
 	if err != nil {
@@ -97,14 +121,38 @@ func (u *adminUsecase) GetOverview() (map[string]interface{}, error) {
 		}
 	}
 
+	// Calculate estimated revenue (assuming all active sessions will be paid)
+	allAreasList, _ := u.areaRepo.GetActiveAreas()
+	var estimatedRevenue float64
+	for _, area := range allAreasList {
+		sessions, _ := u.sessionRepo.GetSessionsByArea(area.ID, startOfDay, endOfDay)
+		for _, session := range sessions {
+			if session.SessionStatus == entities.SessionStatusActive && session.CheckoutTime != nil && session.Duration != nil {
+				// Calculate estimated cost
+				minutes := float64(*session.Duration)
+				hours := minutes / 60.0
+				estimatedRevenue += area.HourlyRate * hours
+			} else if session.SessionStatus == entities.SessionStatusPendingPayment && session.TotalCost != nil {
+				estimatedRevenue += *session.TotalCost
+			}
+		}
+	}
+
 	return map[string]interface{}{
-		"total_users":      len(totalUsers),
-		"total_jukirs":     len(totalJukirs),
-		"total_areas":      len(totalAreas),
-		"today_sessions":   len(todaySessions),
-		"active_sessions":  activeSessions,
-		"pending_payments": pendingPayments,
-		"today_revenue":    totalRevenue,
+		"total_users":       len(totalUsers),
+		"total_jukirs":      len(totalJukirs),
+		"total_areas":       len(totalAreas),
+		"today_sessions":    len(todaySessions),
+		"vehicles_in":       vehiclesIn,
+		"vehicles_out":      vehiclesOut,
+		"active_sessions":   activeSessions,
+		"pending_payments":  pendingPayments,
+		"today_revenue":     totalRevenue,
+		"estimated_revenue": estimatedRevenue,
+		"jukir_status": map[string]interface{}{
+			"active":   activeJukirs,
+			"inactive": inactiveJukirs,
+		},
 	}, nil
 }
 
@@ -114,6 +162,62 @@ func (u *adminUsecase) GetJukirs(limit, offset int) ([]entities.Jukir, int64, er
 		return nil, 0, errors.New("failed to get jukirs")
 	}
 	return jukirs, count, nil
+}
+
+// GetJukirsWithRevenue returns jukirs with their today's revenue
+func (u *adminUsecase) GetJukirsWithRevenue(limit, offset int) ([]map[string]interface{}, int64, error) {
+	jukirs, count, err := u.jukirRepo.List(limit, offset)
+	if err != nil {
+		return nil, 0, errors.New("failed to get jukirs")
+	}
+
+	today := time.Now()
+	startOfDay := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, today.Location())
+	endOfDay := startOfDay.Add(24 * time.Hour)
+
+	result := make([]map[string]interface{}, 0)
+
+	for _, jukir := range jukirs {
+		// Get today's revenue for this jukir
+		revenue, err := u.paymentRepo.GetJukirDailyRevenue(jukir.ID, time.Now())
+		if err != nil {
+			revenue = 0
+		}
+
+		// Get today's sessions for this jukir's area to count transactions
+		sessions, _ := u.sessionRepo.GetSessionsByArea(jukir.AreaID, startOfDay, endOfDay)
+
+		result = append(result, map[string]interface{}{
+			"id":         jukir.ID,
+			"jukir_code": jukir.JukirCode,
+			"user_id":    jukir.UserID,
+			"area_id":    jukir.AreaID,
+			"status":     jukir.Status,
+			"qr_token":   jukir.QRToken,
+			"created_at": jukir.CreatedAt,
+			"updated_at": jukir.UpdatedAt,
+			"user": map[string]interface{}{
+				"id":    jukir.User.ID,
+				"name":  jukir.User.Name,
+				"email": jukir.User.Email,
+				"phone": jukir.User.Phone,
+				"role":  jukir.User.Role,
+			},
+			"area": map[string]interface{}{
+				"id":          jukir.Area.ID,
+				"name":        jukir.Area.Name,
+				"address":     jukir.Area.Address,
+				"latitude":    jukir.Area.Latitude,
+				"longitude":   jukir.Area.Longitude,
+				"hourly_rate": jukir.Area.HourlyRate,
+				"status":      jukir.Area.Status,
+			},
+			"revenue":  revenue,
+			"sessions": len(sessions),
+		})
+	}
+
+	return result, count, nil
 }
 
 func (u *adminUsecase) CreateJukir(req *entities.CreateJukirRequest) (*entities.Jukir, error) {

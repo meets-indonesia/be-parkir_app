@@ -53,6 +53,9 @@ func (h *Handlers) GetAdminOverview(c *gin.Context) {
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/admin/jukirs [get]
 func (h *Handlers) GetJukirs(c *gin.Context) {
+	// Check if revenue parameter is requested
+	includeRevenue := c.Query("include_revenue") == "true"
+
 	limitStr := c.DefaultQuery("limit", "10")
 	offsetStr := c.DefaultQuery("offset", "0")
 
@@ -66,6 +69,34 @@ func (h *Handlers) GetJukirs(c *gin.Context) {
 		offset = 0
 	}
 
+	// If revenue is requested, use the new method
+	if includeRevenue {
+		jukirsWithRevenue, count, err := h.AdminUC.GetJukirsWithRevenue(limit, offset)
+		if err != nil {
+			h.Logger.Error("Failed to get jukirs with revenue:", err)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "Jukirs with revenue retrieved successfully",
+			"data":    jukirsWithRevenue,
+			"meta": gin.H{
+				"pagination": gin.H{
+					"limit":  limit,
+					"offset": offset,
+					"total":  count,
+				},
+			},
+		})
+		return
+	}
+
+	// Original behavior - return jukirs without revenue
 	jukirs, count, err := h.AdminUC.GetJukirs(limit, offset)
 	if err != nil {
 		h.Logger.Error("Failed to get jukirs:", err)
