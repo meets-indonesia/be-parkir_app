@@ -138,17 +138,37 @@ func (u *adminUsecase) GetOverview() (map[string]interface{}, error) {
 		}
 	}
 
+	// Get revenue for last 7 days for chart (oldest to newest)
+	last7DaysRevenue := make([]map[string]interface{}, 7)
+	weekdays := []string{"Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"}
+
+	for i := 0; i < 7; i++ {
+		daysAgo := 6 - i // 6 (oldest) to 0 (today)
+		day := today.AddDate(0, 0, -daysAgo)
+		dayStart := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, day.Location())
+		dayEnd := dayStart.Add(24 * time.Hour)
+
+		dayRevenue, _ := u.paymentRepo.GetRevenueByDateRange(dayStart, dayEnd)
+
+		last7DaysRevenue[i] = map[string]interface{}{
+			"day":     weekdays[day.Weekday()],
+			"date":    day.Format("2006-01-02"),
+			"revenue": dayRevenue,
+		}
+	}
+
 	return map[string]interface{}{
-		"total_users":       len(totalUsers),
-		"total_jukirs":      len(totalJukirs),
-		"total_areas":       len(totalAreas),
-		"today_sessions":    len(todaySessions),
-		"vehicles_in":       vehiclesIn,
-		"vehicles_out":      vehiclesOut,
-		"active_sessions":   activeSessions,
-		"pending_payments":  pendingPayments,
-		"today_revenue":     totalRevenue,
-		"estimated_revenue": estimatedRevenue,
+		"total_users":        len(totalUsers),
+		"total_jukirs":       len(totalJukirs),
+		"total_areas":        len(totalAreas),
+		"today_sessions":     len(todaySessions),
+		"vehicles_in":        vehiclesIn,
+		"vehicles_out":       vehiclesOut,
+		"active_sessions":    activeSessions,
+		"pending_payments":   pendingPayments,
+		"today_revenue":      totalRevenue,
+		"estimated_revenue":  estimatedRevenue,
+		"last_7days_revenue": last7DaysRevenue,
 		"jukir_status": map[string]interface{}{
 			"active":   activeJukirs,
 			"inactive": inactiveJukirs,
