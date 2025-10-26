@@ -108,12 +108,34 @@ func JukirMiddleware(jukirUC usecase.JukirUsecase) gin.HandlerFunc {
 			return
 		}
 
+		// Check if user has jukir role first
+		userRole, exists := c.Get("user_role")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"message": "User not authenticated",
+			})
+			c.Abort()
+			return
+		}
+
+		// Convert userRole to string for comparison
+		userRoleStr := string(userRole.(entities.UserRole))
+		if userRoleStr != string(entities.RoleJukir) {
+			c.JSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"message": "User is not a jukir",
+			})
+			c.Abort()
+			return
+		}
+
 		// Get jukir profile for user
 		jukir, err := jukirUC.GetJukirByUserID(userID.(uint))
 		if err != nil {
 			c.JSON(http.StatusForbidden, gin.H{
 				"success": false,
-				"message": "User is not a jukir",
+				"message": "Jukir profile not found",
 			})
 			c.Abort()
 			return

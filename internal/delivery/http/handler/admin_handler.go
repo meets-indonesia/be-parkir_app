@@ -76,6 +76,11 @@ func (h *Handlers) GetJukirs(c *gin.Context) {
 		return
 	}
 
+	// Ensure we return an empty array instead of null if no jukirs
+	if jukirs == nil {
+		jukirs = []entities.Jukir{}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Jukirs retrieved successfully",

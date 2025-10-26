@@ -76,16 +76,21 @@ func (r *jukirRepository) Delete(id uint) error {
 }
 
 func (r *jukirRepository) List(limit, offset int) ([]entities.Jukir, int64, error) {
-	var jukirs []entities.Jukir
+	jukirs := make([]entities.Jukir, 0)
 	var count int64
 
-	query := r.db.Model(&entities.Jukir{})
-	if err := query.Count(&count).Error; err != nil {
+	// Count total jukirs (excluding soft-deleted)
+	if err := r.db.Model(&entities.Jukir{}).Count(&count).Error; err != nil {
 		return nil, 0, err
 	}
 
-	err := query.Preload("User").Preload("Area").Limit(limit).Offset(offset).Find(&jukirs).Error
-	return jukirs, count, err
+	// Fetch jukirs with preloaded relations
+	err := r.db.Preload("User").Preload("Area").Limit(limit).Offset(offset).Find(&jukirs).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return jukirs, count, nil
 }
 
 func (r *jukirRepository) GetByAreaID(areaID uint) ([]entities.Jukir, error) {
