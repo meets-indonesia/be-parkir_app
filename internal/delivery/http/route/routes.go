@@ -63,6 +63,7 @@ func SetupRoutes(router *gin.Engine, handlers *handler.Handlers, jwtConfig useca
 			jukir.GET("/dashboard", handlers.GetJukirDashboard)
 			jukir.GET("/pending-payments", handlers.GetPendingPayments)
 			jukir.GET("/active-sessions", handlers.GetActiveSessions)
+			jukir.GET("/vehicle-breakdown", handlers.GetVehicleBreakdown)
 			jukir.POST("/confirm-payment", handlers.ConfirmPayment)
 			jukir.GET("/qr-code", handlers.GetQRCode)
 			jukir.GET("/daily-report", handlers.GetDailyReport)
@@ -81,8 +82,12 @@ func SetupRoutes(router *gin.Engine, handlers *handler.Handlers, jwtConfig useca
 			admin.PUT("/jukirs/:id/status", handlers.UpdateJukirStatus)
 			admin.GET("/reports", handlers.GetReports)
 			admin.GET("/sessions", handlers.GetAllSessions)
+			admin.GET("/areas", handlers.GetParkingAreas)
+			admin.GET("/areas/:id", handlers.GetParkingAreaDetail)
+			admin.GET("/areas/:id/transactions", handlers.GetAreaTransactions)
 			admin.POST("/areas", handlers.CreateParkingArea)
 			admin.PUT("/areas/:id", handlers.UpdateParkingArea)
+			admin.GET("/revenue-table", handlers.GetRevenueTable)
 			admin.GET("/sse-status", handlers.GetEventStreamStatus) // SSE connection status
 		}
 	}

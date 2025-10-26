@@ -15,6 +15,7 @@ type JukirUsecase interface {
 	GetQRCode(jukirID uint) (*entities.JukirQRResponse, error)
 	GetDailyReport(jukirID uint, date time.Time) (*entities.DailyReportResponse, error)
 	GetJukirByUserID(userID uint) (*entities.Jukir, error)
+	GetVehicleBreakdown(jukirID uint) (*entities.VehicleBreakdownResponse, error)
 }
 
 type jukirUsecase struct {
@@ -243,4 +244,72 @@ func (u *jukirUsecase) GetJukirByUserID(userID uint) (*entities.Jukir, error) {
 		return nil, errors.New("jukir not found")
 	}
 	return jukir, nil
+}
+
+func (u *jukirUsecase) GetVehicleBreakdown(jukirID uint) (*entities.VehicleBreakdownResponse, error) {
+	// Get jukir info
+	jukir, err := u.jukirRepo.GetByID(jukirID)
+	if err != nil {
+		return nil, errors.New("jukir not found")
+	}
+
+	// Get all sessions for this jukir's area today
+	now := time.Now()
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+
+	var sessions []entities.ParkingSession
+	areaSessions, err := u.sessionRepo.GetSessionsByArea(jukir.AreaID, startOfDay, now)
+	if err != nil {
+		return nil, errors.New("failed to get sessions")
+	}
+
+	// Filter by jukir ID
+	for _, s := range areaSessions {
+		if s.JukirID != nil && *s.JukirID == jukirID {
+			sessions = append(sessions, s)
+		}
+	}
+
+	// Calculate breakdown
+	vehiclesIn := 0
+	vehiclesOut := 0
+	vehiclesInMobil := 0
+	vehiclesOutMobil := 0
+	vehiclesInMotor := 0
+	vehiclesOutMotor := 0
+
+	for _, session := range sessions {
+		// Count check-ins
+		vehiclesIn++
+
+		// Count by vehicle type
+		if session.VehicleType == entities.VehicleTypeMobil {
+			vehiclesInMobil++
+			if session.CheckoutTime != nil {
+				vehiclesOutMobil++
+			}
+		} else if session.VehicleType == entities.VehicleTypeMotor {
+			vehiclesInMotor++
+			if session.CheckoutTime != nil {
+				vehiclesOutMotor++
+			}
+		}
+
+		// Count check-outs
+		if session.CheckoutTime != nil {
+			vehiclesOut++
+		}
+	}
+
+	return &entities.VehicleBreakdownResponse{
+		VehiclesIn:  vehiclesIn,
+		VehiclesOut: vehiclesOut,
+		VehiclesByType: map[string]struct {
+			In  int `json:"in"`
+			Out int `json:"out"`
+		}{
+			"mobil": {In: vehiclesInMobil, Out: vehiclesOutMobil},
+			"motor": {In: vehiclesInMotor, Out: vehiclesOutMotor},
+		},
+	}, nil
 }

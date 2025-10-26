@@ -12,6 +12,10 @@ type AdminUsecase interface {
 	GetOverview(vehicleType *string, dateRange *string) (map[string]interface{}, error)
 	GetJukirs(limit, offset int) ([]entities.Jukir, int64, error)
 	GetJukirsWithRevenue(limit, offset int, vehicleType *string, dateRange *string) ([]map[string]interface{}, int64, error)
+	GetParkingAreas() ([]entities.ParkingArea, error)
+	GetParkingAreaDetail(areaID uint) (map[string]interface{}, error)
+	GetAreaTransactions(areaID uint, limit, offset int) ([]entities.ParkingSession, int64, error)
+	GetRevenueTable(limit, offset int, areaID *uint) ([]map[string]interface{}, int64, error)
 	CreateJukir(req *entities.CreateJukirRequest) (*entities.Jukir, error)
 	UpdateJukirStatus(jukirID uint, req *entities.UpdateJukirRequest) (*entities.Jukir, error)
 	GetReports(startDate, endDate time.Time, areaID *uint) (map[string]interface{}, error)
@@ -517,12 +521,16 @@ func (u *adminUsecase) GetAllSessions(limit, offset int, filters map[string]inte
 
 func (u *adminUsecase) CreateParkingArea(req *entities.CreateParkingAreaRequest) (*entities.ParkingArea, error) {
 	area := &entities.ParkingArea{
-		Name:       req.Name,
-		Address:    req.Address,
-		Latitude:   req.Latitude,
-		Longitude:  req.Longitude,
-		HourlyRate: req.HourlyRate,
-		Status:     entities.AreaStatusActive,
+		Name:              req.Name,
+		Address:           req.Address,
+		Latitude:          req.Latitude,
+		Longitude:         req.Longitude,
+		HourlyRate:        req.HourlyRate,
+		Status:            entities.AreaStatusActive,
+		MaxMobil:          req.MaxMobil,
+		MaxMotor:          req.MaxMotor,
+		StatusOperasional: req.StatusOperasional,
+		JenisArea:         req.JenisArea,
 	}
 
 	if err := u.areaRepo.Create(area); err != nil {
@@ -557,10 +565,181 @@ func (u *adminUsecase) UpdateParkingArea(areaID uint, req *entities.UpdateParkin
 	if req.Status != nil {
 		area.Status = *req.Status
 	}
+	if req.MaxMobil != nil {
+		area.MaxMobil = req.MaxMobil
+	}
+	if req.MaxMotor != nil {
+		area.MaxMotor = req.MaxMotor
+	}
+	if req.StatusOperasional != nil {
+		area.StatusOperasional = *req.StatusOperasional
+	}
+	if req.JenisArea != nil {
+		area.JenisArea = *req.JenisArea
+	}
 
 	if err := u.areaRepo.Update(area); err != nil {
 		return nil, errors.New("failed to update parking area")
 	}
 
 	return area, nil
+}
+
+func (u *adminUsecase) GetParkingAreas() ([]entities.ParkingArea, error) {
+	// Get all areas using List without limit/offset to get all areas with status
+	areas, _, err := u.areaRepo.List(1000, 0) // Large limit to get all
+	if err != nil {
+		return nil, errors.New("failed to get parking areas")
+	}
+	return areas, nil
+}
+
+func (u *adminUsecase) GetParkingAreaDetail(areaID uint) (map[string]interface{}, error) {
+	// Get area
+	area, err := u.areaRepo.GetByID(areaID)
+	if err != nil {
+		return nil, errors.New("parking area not found")
+	}
+
+	// Get jukirs for this area
+	jukirs, _, err := u.jukirRepo.List(1000, 0)
+	if err != nil {
+		return nil, errors.New("failed to get jukirs")
+	}
+
+	// Filter jukirs by area
+	var areaJukirs []entities.Jukir
+	for _, jukir := range jukirs {
+		if jukir.AreaID == areaID {
+			areaJukirs = append(areaJukirs, jukir)
+		}
+	}
+
+	// Count sessions for today
+	now := time.Now()
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+
+	sessions, err := u.sessionRepo.GetSessionsByArea(areaID, startOfDay, now)
+	if err != nil {
+		return nil, errors.New("failed to get sessions")
+	}
+
+	// Calculate metrics
+	totalSessions := len(sessions)
+	activeSessions := 0
+	totalRevenue := 0.0
+
+	for _, session := range sessions {
+		if session.SessionStatus == entities.SessionStatusActive {
+			activeSessions++
+		}
+		if session.PaymentStatus == entities.PaymentStatusPaid && session.TotalCost != nil {
+			totalRevenue += *session.TotalCost
+		}
+	}
+
+	return map[string]interface{}{
+		"area":            area,
+		"jukirs":          areaJukirs,
+		"total_sessions":  totalSessions,
+		"active_sessions": activeSessions,
+		"total_revenue":   totalRevenue,
+		"jukir_count":     len(areaJukirs),
+	}, nil
+}
+
+func (u *adminUsecase) GetAreaTransactions(areaID uint, limit, offset int) ([]entities.ParkingSession, int64, error) {
+	// Get sessions for this area
+	now := time.Now()
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+
+	sessions, err := u.sessionRepo.GetSessionsByArea(areaID, startOfDay, now)
+	if err != nil {
+		return nil, 0, errors.New("failed to get sessions")
+	}
+
+	// Count total
+	count := int64(len(sessions))
+
+	// Apply pagination
+	start := offset
+	end := offset + limit
+	if end > len(sessions) {
+		end = len(sessions)
+	}
+	if start > len(sessions) {
+		return []entities.ParkingSession{}, count, nil
+	}
+
+	return sessions[start:end], count, nil
+}
+
+func (u *adminUsecase) GetRevenueTable(limit, offset int, areaID *uint) ([]map[string]interface{}, int64, error) {
+	// This will return revenue data for the monitor-pendapatan page
+	// Get all active areas or specific area
+	var areas []entities.ParkingArea
+	if areaID != nil {
+		area, err := u.areaRepo.GetByID(*areaID)
+		if err != nil {
+			return nil, 0, errors.New("parking area not found")
+		}
+		areas = []entities.ParkingArea{*area}
+	} else {
+		activeAreas, err := u.areaRepo.GetActiveAreas()
+		if err != nil {
+			return nil, 0, errors.New("failed to get areas")
+		}
+		areas = activeAreas
+	}
+
+	// Get today's date range
+	now := time.Now()
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+
+	// Build revenue table
+	revenueTable := []map[string]interface{}{}
+
+	for _, area := range areas {
+		sessions, err := u.sessionRepo.GetSessionsByArea(area.ID, startOfDay, now)
+		if err != nil {
+			continue
+		}
+
+		// Calculate metrics
+		totalRevenue := 0.0
+		totalSessions := len(sessions)
+		completedSessions := 0
+
+		for _, session := range sessions {
+			if session.PaymentStatus == entities.PaymentStatusPaid && session.TotalCost != nil {
+				totalRevenue += *session.TotalCost
+			}
+			if session.CheckoutTime != nil {
+				completedSessions++
+			}
+		}
+
+		revenueTable = append(revenueTable, map[string]interface{}{
+			"area_id":            area.ID,
+			"area_name":          area.Name,
+			"total_sessions":     totalSessions,
+			"completed_sessions": completedSessions,
+			"total_revenue":      totalRevenue,
+		})
+	}
+
+	// Count total
+	count := int64(len(revenueTable))
+
+	// Apply pagination
+	start := offset
+	end := offset + limit
+	if end > len(revenueTable) {
+		end = len(revenueTable)
+	}
+	if start > len(revenueTable) {
+		return []map[string]interface{}{}, count, nil
+	}
+
+	return revenueTable[start:end], count, nil
 }

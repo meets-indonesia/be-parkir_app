@@ -473,6 +473,176 @@ func (h *Handlers) CreateParkingArea(c *gin.Context) {
 	})
 }
 
+// GetParkingAreas godoc
+// @Summary Get all parking areas with status
+// @Description Get list of all parking areas for admin area-parkir menu
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/areas [get]
+func (h *Handlers) GetParkingAreas(c *gin.Context) {
+	response, err := h.AdminUC.GetParkingAreas()
+	if err != nil {
+		h.Logger.Error("Failed to get parking areas:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Parking areas retrieved successfully",
+		"data":    response,
+	})
+}
+
+// GetParkingAreaDetail godoc
+// @Summary Get parking area detail
+// @Description Get full parking area detail with jukirs and metrics
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Area ID"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/areas/{id} [get]
+func (h *Handlers) GetParkingAreaDetail(c *gin.Context) {
+	areaIDStr := c.Param("id")
+	areaID, err := strconv.ParseUint(areaIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid area ID",
+		})
+		return
+	}
+
+	response, err := h.AdminUC.GetParkingAreaDetail(uint(areaID))
+	if err != nil {
+		h.Logger.Error("Failed to get parking area detail:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Parking area detail retrieved successfully",
+		"data":    response,
+	})
+}
+
+// GetAreaTransactions godoc
+// @Summary Get area transactions
+// @Description Get transaction details by parking area
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Area ID"
+// @Param limit query int false "Limit" default(10)
+// @Param offset query int false "Offset" default(0)
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/areas/{id}/transactions [get]
+func (h *Handlers) GetAreaTransactions(c *gin.Context) {
+	areaIDStr := c.Param("id")
+	areaID, err := strconv.ParseUint(areaIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid area ID",
+		})
+		return
+	}
+
+	limitStr := c.DefaultQuery("limit", "10")
+	offsetStr := c.DefaultQuery("offset", "0")
+
+	limit, _ := strconv.Atoi(limitStr)
+	offset, _ := strconv.Atoi(offsetStr)
+
+	response, count, err := h.AdminUC.GetAreaTransactions(uint(areaID), limit, offset)
+	if err != nil {
+		h.Logger.Error("Failed to get area transactions:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Area transactions retrieved successfully",
+		"data":    response,
+		"total":   count,
+	})
+}
+
+// GetRevenueTable godoc
+// @Summary Get revenue table
+// @Description Get revenue table data for monitor-pendapatan page
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param area_id query int false "Area ID to filter"
+// @Param limit query int false "Limit" default(10)
+// @Param offset query int false "Offset" default(0)
+// @Success 200 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/revenue-table [get]
+func (h *Handlers) GetRevenueTable(c *gin.Context) {
+	areaIDStr := c.Query("area_id")
+	var areaID *uint
+
+	if areaIDStr != "" {
+		areaIDUint, err := strconv.ParseUint(areaIDStr, 10, 64)
+		if err == nil {
+			areaIDVal := uint(areaIDUint)
+			areaID = &areaIDVal
+		}
+	}
+
+	limitStr := c.DefaultQuery("limit", "10")
+	offsetStr := c.DefaultQuery("offset", "0")
+
+	limit, _ := strconv.Atoi(limitStr)
+	offset, _ := strconv.Atoi(offsetStr)
+
+	response, count, err := h.AdminUC.GetRevenueTable(limit, offset, areaID)
+	if err != nil {
+		h.Logger.Error("Failed to get revenue table:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Revenue table retrieved successfully",
+		"data":    response,
+		"total":   count,
+	})
+}
+
 // UpdateParkingArea godoc
 // @Summary Update parking area
 // @Description Update an existing parking area

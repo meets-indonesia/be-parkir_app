@@ -13,7 +13,9 @@ type ParkingUsecase interface {
 	Checkin(req *entities.CheckinRequest) (*entities.CheckinResponse, error)
 	Checkout(req *entities.CheckoutRequest) (*entities.CheckoutResponse, error)
 	GetActiveSession(qrToken string) (*entities.ActiveSessionResponse, error)
+	GetSessionByID(sessionID uint) (*entities.ParkingSession, error)
 	GetHistoryByPlatNomor(platNomor string, limit, offset int) (*entities.SessionHistoryResponse, error)
+	GetHistoryBySession(sessionID uint) (*entities.ParkingSession, error)
 	ManualCheckin(jukirID uint, req *entities.ManualCheckinRequest) (*entities.ManualCheckinResponse, error)
 	ManualCheckout(jukirID uint, req *entities.ManualCheckoutRequest) (*entities.ManualCheckoutResponse, error)
 }
@@ -82,10 +84,12 @@ func (u *parkingUsecase) Checkin(req *entities.CheckinRequest) (*entities.Checki
 		return nil, errors.New("jukir is not active")
 	}
 
-	// Verify GPS location (within 50m radius)
-	distance := u.calculateDistance(req.Latitude, req.Longitude, jukir.Area.Latitude, jukir.Area.Longitude)
-	if distance > 0.05 { // 50 meters
-		return nil, errors.New("you must be within 50 meters of the parking area")
+	// Optional GPS verification (skip if coordinates not provided)
+	if req.Latitude != nil && req.Longitude != nil {
+		distance := u.calculateDistance(*req.Latitude, *req.Longitude, jukir.Area.Latitude, jukir.Area.Longitude)
+		if distance > 0.05 { // 50 meters
+			return nil, errors.New("you must be within 50 meters of the parking area")
+		}
 	}
 
 	// Create parking session
@@ -116,8 +120,16 @@ func (u *parkingUsecase) Checkout(req *entities.CheckoutRequest) (*entities.Chec
 	var session *entities.ParkingSession
 	var err error
 
-	// Get active session - check by license plate if provided, otherwise by QR token
-	if req.PlatNomor != nil && *req.PlatNomor != "" {
+	// Priority: session_id > plat_nomor > qr_token
+	if req.SessionID != nil && *req.SessionID != 0 {
+		session, err = u.sessionRepo.GetByID(*req.SessionID)
+		if err != nil {
+			return nil, errors.New("session not found")
+		}
+		if session.SessionStatus == entities.SessionStatusCompleted {
+			return nil, errors.New("session already completed")
+		}
+	} else if req.PlatNomor != nil && *req.PlatNomor != "" {
 		session, err = u.sessionRepo.GetActiveByPlatNomor(*req.PlatNomor)
 		if err != nil {
 			return nil, errors.New("no active parking session found for this license plate")
@@ -140,10 +152,12 @@ func (u *parkingUsecase) Checkout(req *entities.CheckoutRequest) (*entities.Chec
 		return nil, errors.New("QR code does not match the check-in location")
 	}
 
-	// Verify GPS location
-	distance := u.calculateDistance(req.Latitude, req.Longitude, jukir.Area.Latitude, jukir.Area.Longitude)
-	if distance > 0.05 { // 50 meters
-		return nil, errors.New("you must be within 50 meters of the parking area")
+	// Optional GPS verification (skip if coordinates not provided)
+	if req.Latitude != nil && req.Longitude != nil {
+		distance := u.calculateDistance(*req.Latitude, *req.Longitude, jukir.Area.Latitude, jukir.Area.Longitude)
+		if distance > 0.05 { // 50 meters
+			return nil, errors.New("you must be within 50 meters of the parking area")
+		}
 	}
 
 	// Calculate duration and cost based on area's hourly rate
@@ -235,6 +249,14 @@ func (u *parkingUsecase) GetHistoryByPlatNomor(platNomor string, limit, offset i
 	}, nil
 }
 
+func (u *parkingUsecase) GetHistoryBySession(sessionID uint) (*entities.ParkingSession, error) {
+	session, err := u.sessionRepo.GetByID(sessionID)
+	if err != nil {
+		return nil, errors.New("session not found")
+	}
+	return session, nil
+}
+
 // calculateDistance calculates the distance between two coordinates using Haversine formula
 func (u *parkingUsecase) calculateDistance(lat1, lng1, lat2, lng2 float64) float64 {
 	const R = 6371 // Earth's radius in kilometers
@@ -250,6 +272,10 @@ func (u *parkingUsecase) calculateDistance(lat1, lng1, lat2, lng2 float64) float
 	distance := R * c
 
 	return distance
+}
+
+func (u *parkingUsecase) GetSessionByID(sessionID uint) (*entities.ParkingSession, error) {
+	return u.sessionRepo.GetByID(sessionID)
 }
 
 func (u *parkingUsecase) ManualCheckin(jukirID uint, req *entities.ManualCheckinRequest) (*entities.ManualCheckinResponse, error) {

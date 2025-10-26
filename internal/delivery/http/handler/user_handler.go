@@ -332,11 +332,12 @@ func (h *Handlers) GetActiveSession(c *gin.Context) {
 
 // GetParkingHistory godoc
 // @Summary Get parking history
-// @Description Get parking session history by license plate (anonymous)
+// @Description Get parking session history by license plate or session ID (anonymous)
 // @Tags parking
 // @Accept json
 // @Produce json
-// @Param plat_nomor query string true "License plate number"
+// @Param plat_nomor query string false "License plate number"
+// @Param session_id query int false "Session ID"
 // @Param limit query int false "Limit" default(10)
 // @Param offset query int false "Offset" default(0)
 // @Success 200 {object} map[string]interface{}
@@ -345,14 +346,49 @@ func (h *Handlers) GetActiveSession(c *gin.Context) {
 // @Router /api/v1/parking/history [get]
 func (h *Handlers) GetParkingHistory(c *gin.Context) {
 	platNomor := c.Query("plat_nomor")
-	if platNomor == "" {
+	sessionIDStr := c.Query("session_id")
+
+	// Require at least one: plat_nomor OR session_id
+	if platNomor == "" && sessionIDStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "License plate number is required",
+			"message": "Either license plate number or session ID is required",
 		})
 		return
 	}
 
+	// If session_id is provided, return single session
+	if sessionIDStr != "" {
+		sessionID, err := strconv.ParseUint(sessionIDStr, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "Invalid session ID",
+			})
+			return
+		}
+
+		session, err := h.ParkingUC.GetHistoryBySession(uint(sessionID))
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "Parking history retrieved successfully",
+			"data": gin.H{
+				"sessions": []entities.ParkingSession{*session},
+				"count":    1,
+			},
+		})
+		return
+	}
+
+	// Query by plat_nomor
 	limitStr := c.DefaultQuery("limit", "10")
 	offsetStr := c.DefaultQuery("offset", "0")
 

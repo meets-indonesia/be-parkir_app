@@ -274,6 +274,44 @@ func (h *Handlers) GetDailyReport(c *gin.Context) {
 	})
 }
 
+// GetVehicleBreakdown godoc
+// @Summary Get vehicle breakdown (in/out)
+// @Description Get breakdown of vehicles entered and exited for jukir area
+// @Tags jukir
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/jukir/vehicle-breakdown [get]
+func (h *Handlers) GetVehicleBreakdown(c *gin.Context) {
+	jukirID, exists := c.Get("jukir_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "Jukir not authenticated",
+		})
+		return
+	}
+
+	response, err := h.JukirUC.GetVehicleBreakdown(jukirID.(uint))
+	if err != nil {
+		h.Logger.Error("Failed to get vehicle breakdown:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Vehicle breakdown retrieved successfully",
+		"data":    response,
+	})
+}
+
 // ManualCheckin godoc
 // @Summary Manual check-in
 // @Description Create manual parking record for check-in

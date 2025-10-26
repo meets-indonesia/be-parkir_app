@@ -47,17 +47,18 @@ type ParkingSession struct {
 
 type CheckinRequest struct {
 	QRToken     string      `json:"qr_token" validate:"required"`
-	Latitude    float64     `json:"latitude" validate:"required,latitude"`
-	Longitude   float64     `json:"longitude" validate:"required,longitude"`
+	Latitude    *float64    `json:"latitude,omitempty" validate:"omitempty,latitude"`
+	Longitude   *float64    `json:"longitude,omitempty" validate:"omitempty,longitude"`
 	VehicleType VehicleType `json:"vehicle_type" validate:"required,oneof=mobil motor"`
 	PlatNomor   *string     `json:"plat_nomor,omitempty" validate:"omitempty,min=1,max=20"`
 }
 
 type CheckoutRequest struct {
-	QRToken   string  `json:"qr_token" validate:"required"`
-	PlatNomor *string `json:"plat_nomor,omitempty" validate:"omitempty,min=1,max=20"`
-	Latitude  float64 `json:"latitude" validate:"required,latitude"`
-	Longitude float64 `json:"longitude" validate:"required,longitude"`
+	SessionID *uint    `json:"session_id,omitempty" validate:"omitempty"`
+	QRToken   string   `json:"qr_token" validate:"required"`
+	PlatNomor *string  `json:"plat_nomor,omitempty" validate:"omitempty,min=1,max=20"`
+	Latitude  *float64 `json:"latitude,omitempty" validate:"omitempty,latitude"`
+	Longitude *float64 `json:"longitude,omitempty" validate:"omitempty,longitude"`
 }
 
 type CheckinResponse struct {
