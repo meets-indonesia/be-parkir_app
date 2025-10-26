@@ -4,13 +4,14 @@ import (
 	"be-parkir/internal/domain/entities"
 	"be-parkir/internal/repository"
 	"errors"
+	"fmt"
 	"time"
 )
 
 type AdminUsecase interface {
-	GetOverview(vehicleType *string) (map[string]interface{}, error)
+	GetOverview(vehicleType *string, dateRange *string) (map[string]interface{}, error)
 	GetJukirs(limit, offset int) ([]entities.Jukir, int64, error)
-	GetJukirsWithRevenue(limit, offset int, vehicleType *string) ([]map[string]interface{}, int64, error)
+	GetJukirsWithRevenue(limit, offset int, vehicleType *string, dateRange *string) ([]map[string]interface{}, int64, error)
 	CreateJukir(req *entities.CreateJukirRequest) (*entities.Jukir, error)
 	UpdateJukirStatus(jukirID uint, req *entities.UpdateJukirRequest) (*entities.Jukir, error)
 	GetReports(startDate, endDate time.Time, areaID *uint) (map[string]interface{}, error)
@@ -37,7 +38,99 @@ func NewAdminUsecase(userRepo repository.UserRepository, jukirRepo repository.Ju
 	}
 }
 
-func (u *adminUsecase) GetOverview(vehicleType *string) (map[string]interface{}, error) {
+// getDateRange calculates start and end times based on date range string
+func getDateRange(dateRange string, now time.Time) (time.Time, time.Time) {
+	switch dateRange {
+	case "minggu_ini": // This week (Monday to Sunday)
+		weekday := int(now.Weekday()) - 1 // Monday = 0
+		if weekday < 0 {
+			weekday = 6 // Sunday
+		}
+		start := time.Date(now.Year(), now.Month(), now.Day()-weekday, 0, 0, 0, 0, now.Location())
+		return start, now
+	case "bulan_ini": // This month
+		start := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+		return start, now
+	case "tahun_ini": // This year
+		start := time.Date(now.Year(), 1, 1, 0, 0, 0, 0, now.Location())
+		return start, now
+	default: // "hari_ini" or empty - today
+		start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		end := start.Add(24 * time.Hour)
+		return start, end
+	}
+}
+
+// getPeriods returns array of period data based on date range
+func getPeriods(dateRange string, now time.Time, paymentRepo repository.PaymentRepository) []map[string]interface{} {
+	switch dateRange {
+	case "bulan_ini": // Last 7 months
+		periods := make([]map[string]interface{}, 7)
+		months := []string{"Jul", "Agu", "Sep", "Okt", "Nov", "Des", "Jan"}
+		for i := 0; i < 7; i++ {
+			monthsAgo := 6 - i
+			period := now.AddDate(0, -monthsAgo, 0)
+			start := time.Date(period.Year(), period.Month(), 1, 0, 0, 0, 0, now.Location())
+			end := start.AddDate(0, 1, 0).Add(-time.Second)
+
+			revenue, _ := paymentRepo.GetRevenueByDateRange(start, end)
+
+			periods[i] = map[string]interface{}{
+				"period":  months[period.Month()-1],
+				"date":    period.Format("2006-01"),
+				"revenue": revenue,
+			}
+		}
+		return periods
+	case "tahun_ini": // Last 7 weeks
+		periods := make([]map[string]interface{}, 7)
+		for i := 0; i < 7; i++ {
+			weeksAgo := 6 - i
+			period := now.AddDate(0, 0, -7*weeksAgo)
+			weekStart := period.AddDate(0, 0, -int(period.Weekday()))
+			start := time.Date(weekStart.Year(), weekStart.Month(), weekStart.Day(), 0, 0, 0, 0, now.Location())
+			end := start.AddDate(0, 0, 7)
+
+			revenue, _ := paymentRepo.GetRevenueByDateRange(start, end)
+
+			periods[i] = map[string]interface{}{
+				"period":  fmt.Sprintf("Minggu %d", weeksAgo+1),
+				"date":    start.Format("2006-01-02"),
+				"revenue": revenue,
+			}
+		}
+		return periods
+	default: // hari_ini or minggu_ini - last 7 days
+		periods := make([]map[string]interface{}, 7)
+		weekdays := []string{"Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"}
+		for i := 0; i < 7; i++ {
+			daysAgo := 6 - i
+			day := now.AddDate(0, 0, -daysAgo)
+			start := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, day.Location())
+			end := start.Add(24 * time.Hour)
+
+			revenue, _ := paymentRepo.GetRevenueByDateRange(start, end)
+
+			periods[i] = map[string]interface{}{
+				"period":  weekdays[day.Weekday()],
+				"date":    day.Format("2006-01-02"),
+				"revenue": revenue,
+			}
+		}
+		return periods
+	}
+}
+
+func (u *adminUsecase) GetOverview(vehicleType *string, dateRange *string) (map[string]interface{}, error) {
+	// Determine date range
+	now := time.Now()
+	dateRangeStr := "hari_ini" // default
+	if dateRange != nil && *dateRange != "" {
+		dateRangeStr = *dateRange
+	}
+
+	startTime, endTime := getDateRange(dateRangeStr, now)
+
 	// Get total users
 	totalUsers, _, err := u.userRepo.List(0, 0)
 	if err != nil {
@@ -67,33 +160,28 @@ func (u *adminUsecase) GetOverview(vehicleType *string) (map[string]interface{},
 		return nil, errors.New("failed to get total areas")
 	}
 
-	// Get today's sessions
-	today := time.Now()
-	startOfDay := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, today.Location())
-	endOfDay := startOfDay.Add(24 * time.Hour)
-
-	// Get all areas for today's sessions
+	// Get all areas for sessions
 	allAreas, err := u.areaRepo.GetActiveAreas()
 	if err != nil {
 		return nil, errors.New("failed to get areas")
 	}
 
-	var todaySessions []entities.ParkingSession
+	var sessions []entities.ParkingSession
 	for _, area := range allAreas {
-		sessions, err := u.sessionRepo.GetSessionsByArea(area.ID, startOfDay, endOfDay)
+		areaSessions, err := u.sessionRepo.GetSessionsByArea(area.ID, startTime, endTime)
 		if err != nil {
 			continue
 		}
 
 		// Filter by vehicle type if specified
 		if vehicleType != nil && *vehicleType != "" {
-			for _, session := range sessions {
+			for _, session := range areaSessions {
 				if string(session.VehicleType) == *vehicleType {
-					todaySessions = append(todaySessions, session)
+					sessions = append(sessions, session)
 				}
 			}
 		} else {
-			todaySessions = append(todaySessions, sessions...)
+			sessions = append(sessions, areaSessions...)
 		}
 	}
 
@@ -105,8 +193,9 @@ func (u *adminUsecase) GetOverview(vehicleType *string) (map[string]interface{},
 	vehiclesInMotor := 0
 	vehiclesOutMotor := 0
 
-	for _, session := range todaySessions {
-		// Count all check-ins
+	// If filtered, these will contain only the filtered type
+	for _, session := range sessions {
+		// Count all check-ins (will be filtered count if vehicleType filter is applied)
 		vehiclesIn++
 
 		// Count by vehicle type
@@ -128,15 +217,17 @@ func (u *adminUsecase) GetOverview(vehicleType *string) (map[string]interface{},
 		}
 	}
 
-	// Get total revenue
-	totalRevenue, err := u.paymentRepo.GetRevenueByDateRange(startOfDay, endOfDay)
-	if err != nil {
-		return nil, errors.New("failed to get total revenue")
+	// Calculate total revenue from filtered sessions
+	var totalRevenue float64
+	for _, session := range sessions {
+		if session.PaymentStatus == entities.PaymentStatusPaid && session.TotalCost != nil {
+			totalRevenue += *session.TotalCost
+		}
 	}
 
 	// Count active sessions
 	activeSessions := 0
-	for _, session := range todaySessions {
+	for _, session := range sessions {
 		if session.SessionStatus == entities.SessionStatusActive {
 			activeSessions++
 		}
@@ -144,53 +235,42 @@ func (u *adminUsecase) GetOverview(vehicleType *string) (map[string]interface{},
 
 	// Count pending payments
 	pendingPayments := 0
-	for _, session := range todaySessions {
+	for _, session := range sessions {
 		if session.SessionStatus == entities.SessionStatusPendingPayment {
 			pendingPayments++
 		}
 	}
 
-	// Calculate estimated revenue (assuming all active sessions will be paid)
-	allAreasList, _ := u.areaRepo.GetActiveAreas()
+	// Calculate estimated revenue from filtered sessions
 	var estimatedRevenue float64
+	// Get all areas to find hourly rate
+	allAreasList, _ := u.areaRepo.GetActiveAreas()
+	areaMap := make(map[uint]entities.ParkingArea)
 	for _, area := range allAreasList {
-		sessions, _ := u.sessionRepo.GetSessionsByArea(area.ID, startOfDay, endOfDay)
-		for _, session := range sessions {
-			if session.SessionStatus == entities.SessionStatusActive && session.CheckoutTime != nil && session.Duration != nil {
-				// Calculate estimated cost
-				minutes := float64(*session.Duration)
-				hours := minutes / 60.0
-				estimatedRevenue += area.HourlyRate * hours
-			} else if session.SessionStatus == entities.SessionStatusPendingPayment && session.TotalCost != nil {
-				estimatedRevenue += *session.TotalCost
-			}
+		areaMap[area.ID] = area
+	}
+
+	for _, session := range sessions {
+		if session.SessionStatus == entities.SessionStatusActive && session.CheckoutTime != nil && session.Duration != nil {
+			// Get area hourly rate
+			area := areaMap[session.AreaID]
+			// Calculate estimated cost
+			minutes := float64(*session.Duration)
+			hours := minutes / 60.0
+			estimatedRevenue += area.HourlyRate * hours
+		} else if session.SessionStatus == entities.SessionStatusPendingPayment && session.TotalCost != nil {
+			estimatedRevenue += *session.TotalCost
 		}
 	}
 
-	// Get revenue for last 7 days for chart (oldest to newest)
-	last7DaysRevenue := make([]map[string]interface{}, 7)
-	weekdays := []string{"Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"}
-
-	for i := 0; i < 7; i++ {
-		daysAgo := 6 - i // 6 (oldest) to 0 (today)
-		day := today.AddDate(0, 0, -daysAgo)
-		dayStart := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, day.Location())
-		dayEnd := dayStart.Add(24 * time.Hour)
-
-		dayRevenue, _ := u.paymentRepo.GetRevenueByDateRange(dayStart, dayEnd)
-
-		last7DaysRevenue[i] = map[string]interface{}{
-			"day":     weekdays[day.Weekday()],
-			"date":    day.Format("2006-01-02"),
-			"revenue": dayRevenue,
-		}
-	}
+	// Get chart data based on date range
+	chartData := getPeriods(dateRangeStr, now, u.paymentRepo)
 
 	return map[string]interface{}{
 		"total_users":    len(totalUsers),
 		"total_jukirs":   len(totalJukirs),
 		"total_areas":    len(totalAreas),
-		"today_sessions": len(todaySessions),
+		"today_sessions": len(sessions),
 		"vehicles_in":    vehiclesIn,
 		"vehicles_out":   vehiclesOut,
 		"vehicles_by_type": map[string]interface{}{
@@ -203,11 +283,11 @@ func (u *adminUsecase) GetOverview(vehicleType *string) (map[string]interface{},
 				"out": vehiclesOutMotor,
 			},
 		},
-		"active_sessions":    activeSessions,
-		"pending_payments":   pendingPayments,
-		"today_revenue":      totalRevenue,
-		"estimated_revenue":  estimatedRevenue,
-		"last_7days_revenue": last7DaysRevenue,
+		"active_sessions":   activeSessions,
+		"pending_payments":  pendingPayments,
+		"today_revenue":     totalRevenue,
+		"estimated_revenue": estimatedRevenue,
+		"chart_data":        chartData,
 		"jukir_status": map[string]interface{}{
 			"active":   activeJukirs,
 			"inactive": inactiveJukirs,
@@ -223,22 +303,27 @@ func (u *adminUsecase) GetJukirs(limit, offset int) ([]entities.Jukir, int64, er
 	return jukirs, count, nil
 }
 
-// GetJukirsWithRevenue returns jukirs with their today's revenue
-func (u *adminUsecase) GetJukirsWithRevenue(limit, offset int, vehicleType *string) ([]map[string]interface{}, int64, error) {
+// GetJukirsWithRevenue returns jukirs with their revenue
+func (u *adminUsecase) GetJukirsWithRevenue(limit, offset int, vehicleType *string, dateRange *string) ([]map[string]interface{}, int64, error) {
 	jukirs, count, err := u.jukirRepo.List(limit, offset)
 	if err != nil {
 		return nil, 0, errors.New("failed to get jukirs")
 	}
 
-	today := time.Now()
-	startOfDay := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, today.Location())
-	endOfDay := startOfDay.Add(24 * time.Hour)
+	// Determine date range
+	now := time.Now()
+	dateRangeStr := "hari_ini" // default
+	if dateRange != nil && *dateRange != "" {
+		dateRangeStr = *dateRange
+	}
+
+	startTime, endTime := getDateRange(dateRangeStr, now)
 
 	result := make([]map[string]interface{}, 0)
 
 	for _, jukir := range jukirs {
-		// Get today's sessions for this jukir's area to count transactions
-		sessions, _ := u.sessionRepo.GetSessionsByArea(jukir.AreaID, startOfDay, endOfDay)
+		// Get sessions for this jukir's area within date range
+		sessions, _ := u.sessionRepo.GetSessionsByArea(jukir.AreaID, startTime, endTime)
 
 		// Filter by vehicle type if specified
 		if vehicleType != nil && *vehicleType != "" {

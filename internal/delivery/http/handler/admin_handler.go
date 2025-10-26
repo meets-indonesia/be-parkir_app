@@ -18,18 +18,26 @@ import (
 // @Produce json
 // @Security BearerAuth
 // @Param vehicle_type query string false "Filter by vehicle type (mobil/motor)"
+// @Param date_range query string false "Filter by date range (hari_ini, minggu_ini, bulan_ini, tahun_ini)"
 // @Success 200 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/admin/overview [get]
 func (h *Handlers) GetAdminOverview(c *gin.Context) {
 	vehicleType := c.Query("vehicle_type")
+	dateRange := c.Query("date_range")
+
 	var vehicleTypePtr *string
 	if vehicleType != "" && (vehicleType == "mobil" || vehicleType == "motor") {
 		vehicleTypePtr = &vehicleType
 	}
 
-	response, err := h.AdminUC.GetOverview(vehicleTypePtr)
+	var dateRangePtr *string
+	if dateRange != "" && (dateRange == "hari_ini" || dateRange == "minggu_ini" || dateRange == "bulan_ini" || dateRange == "tahun_ini") {
+		dateRangePtr = &dateRange
+	}
+
+	response, err := h.AdminUC.GetOverview(vehicleTypePtr, dateRangePtr)
 	if err != nil {
 		h.Logger.Error("Failed to get overview:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -43,7 +51,10 @@ func (h *Handlers) GetAdminOverview(c *gin.Context) {
 		"success": true,
 		"message": "Overview data retrieved successfully",
 		"data":    response,
-		"filter":  map[string]interface{}{"vehicle_type": vehicleType},
+		"filter": map[string]interface{}{
+			"vehicle_type": vehicleType,
+			"date_range":   dateRange,
+		},
 	})
 }
 
@@ -80,12 +91,19 @@ func (h *Handlers) GetJukirs(c *gin.Context) {
 	// If revenue is requested, use the new method
 	if includeRevenue {
 		vehicleType := c.Query("vehicle_type")
+		dateRange := c.Query("date_range")
+
 		var vehicleTypePtr *string
 		if vehicleType != "" && (vehicleType == "mobil" || vehicleType == "motor") {
 			vehicleTypePtr = &vehicleType
 		}
 
-		jukirsWithRevenue, count, err := h.AdminUC.GetJukirsWithRevenue(limit, offset, vehicleTypePtr)
+		var dateRangePtr *string
+		if dateRange != "" && (dateRange == "hari_ini" || dateRange == "minggu_ini" || dateRange == "bulan_ini" || dateRange == "tahun_ini") {
+			dateRangePtr = &dateRange
+		}
+
+		jukirsWithRevenue, count, err := h.AdminUC.GetJukirsWithRevenue(limit, offset, vehicleTypePtr, dateRangePtr)
 		if err != nil {
 			h.Logger.Error("Failed to get jukirs with revenue:", err)
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -106,6 +124,7 @@ func (h *Handlers) GetJukirs(c *gin.Context) {
 					"total":  count,
 				},
 				"vehicle_type": vehicleType,
+				"date_range":   dateRange,
 			},
 		})
 		return
