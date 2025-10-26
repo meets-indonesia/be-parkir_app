@@ -8,7 +8,7 @@ import (
 )
 
 type AdminUsecase interface {
-	GetOverview() (map[string]interface{}, error)
+	GetOverview(vehicleType *string) (map[string]interface{}, error)
 	GetJukirs(limit, offset int) ([]entities.Jukir, int64, error)
 	GetJukirsWithRevenue(limit, offset int, vehicleType *string) ([]map[string]interface{}, int64, error)
 	CreateJukir(req *entities.CreateJukirRequest) (*entities.Jukir, error)
@@ -37,7 +37,7 @@ func NewAdminUsecase(userRepo repository.UserRepository, jukirRepo repository.Ju
 	}
 }
 
-func (u *adminUsecase) GetOverview() (map[string]interface{}, error) {
+func (u *adminUsecase) GetOverview(vehicleType *string) (map[string]interface{}, error) {
 	// Get total users
 	totalUsers, _, err := u.userRepo.List(0, 0)
 	if err != nil {
@@ -84,7 +84,17 @@ func (u *adminUsecase) GetOverview() (map[string]interface{}, error) {
 		if err != nil {
 			continue
 		}
-		todaySessions = append(todaySessions, sessions...)
+
+		// Filter by vehicle type if specified
+		if vehicleType != nil && *vehicleType != "" {
+			for _, session := range sessions {
+				if string(session.VehicleType) == *vehicleType {
+					todaySessions = append(todaySessions, session)
+				}
+			}
+		} else {
+			todaySessions = append(todaySessions, sessions...)
+		}
 	}
 
 	// Calculate vehicles in and out

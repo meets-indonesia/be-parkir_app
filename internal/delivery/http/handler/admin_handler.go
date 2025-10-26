@@ -17,12 +17,19 @@ import (
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param vehicle_type query string false "Filter by vehicle type (mobil/motor)"
 // @Success 200 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/admin/overview [get]
 func (h *Handlers) GetAdminOverview(c *gin.Context) {
-	response, err := h.AdminUC.GetOverview()
+	vehicleType := c.Query("vehicle_type")
+	var vehicleTypePtr *string
+	if vehicleType != "" && (vehicleType == "mobil" || vehicleType == "motor") {
+		vehicleTypePtr = &vehicleType
+	}
+
+	response, err := h.AdminUC.GetOverview(vehicleTypePtr)
 	if err != nil {
 		h.Logger.Error("Failed to get overview:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -36,6 +43,7 @@ func (h *Handlers) GetAdminOverview(c *gin.Context) {
 		"success": true,
 		"message": "Overview data retrieved successfully",
 		"data":    response,
+		"filter":  map[string]interface{}{"vehicle_type": vehicleType},
 	})
 }
 
