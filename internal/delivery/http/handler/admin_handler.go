@@ -162,7 +162,7 @@ func (h *Handlers) GetJukirs(c *gin.Context) {
 
 // CreateJukir godoc
 // @Summary Create new jukir
-// @Description Create a new jukir account
+// @Description Create a new jukir account with auto-generated username and password (only requires name, area, and status)
 // @Tags admin
 // @Accept json
 // @Produce json
@@ -704,6 +704,393 @@ func (h *Handlers) UpdateParkingArea(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Parking area updated successfully",
+		"data":    response,
+	})
+}
+
+// GetAllJukirsRevenue godoc
+// @Summary Get all jukirs with revenue
+// @Description Get list of all jukirs with their revenue filtered by date range
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param date_range query string false "Filter by date range (hari_ini, minggu_ini, bulan_ini, tahun_ini)" default(hari_ini)
+// @Success 200 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/jukirs/revenue [get]
+func (h *Handlers) GetAllJukirsRevenue(c *gin.Context) {
+	dateRange := c.Query("date_range")
+
+	var dateRangePtr *string
+	if dateRange != "" && (dateRange == "hari_ini" || dateRange == "minggu_ini" || dateRange == "bulan_ini" || dateRange == "tahun_ini") {
+		dateRangePtr = &dateRange
+	}
+
+	response, err := h.AdminUC.GetAllJukirsRevenue(dateRangePtr)
+	if err != nil {
+		h.Logger.Error("Failed to get jukirs revenue:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Jukirs revenue retrieved successfully",
+		"data":    response,
+	})
+}
+
+// AddManualRevenue godoc
+// @Summary Add manual revenue for jukir
+// @Description Add manual revenue entry for a specific jukir on a specific date
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body entities.JukirRevenueRequest true "Manual revenue data"
+// @Success 201 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/jukirs/manual-revenue [post]
+func (h *Handlers) AddManualRevenue(c *gin.Context) {
+	var req entities.JukirRevenueRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.Logger.Error("Failed to bind JSON:", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid request data",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	// Validate request
+	validate := validator.New()
+	if err := validate.Struct(req); err != nil {
+		h.Logger.Error("Validation failed:", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Validation failed",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	response, err := h.AdminUC.AddManualRevenue(&req)
+	if err != nil {
+		h.Logger.Error("Failed to add manual revenue:", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"success": true,
+		"message": "Manual revenue added successfully",
+		"data":    response,
+	})
+}
+
+// GetVehicleStatistics godoc
+// @Summary Get vehicle statistics
+// @Description Get planning of total vehicles in and out with filters
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param vehicle_type query string false "Filter by vehicle type (mobil/motor)"
+// @Param date_range query string false "Filter by date range (hari_ini, minggu_ini, bulan_ini)"
+// @Success 200 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/statistics/vehicles [get]
+func (h *Handlers) GetVehicleStatistics(c *gin.Context) {
+	vehicleType := c.Query("vehicle_type")
+	dateRange := c.Query("date_range")
+
+	var vehicleTypePtr *string
+	if vehicleType != "" && (vehicleType == "mobil" || vehicleType == "motor") {
+		vehicleTypePtr = &vehicleType
+	}
+
+	var dateRangePtr *string
+	if dateRange != "" && (dateRange == "hari_ini" || dateRange == "minggu_ini" || dateRange == "bulan_ini") {
+		dateRangePtr = &dateRange
+	}
+
+	response, err := h.AdminUC.GetVehicleStatistics(dateRangePtr, vehicleTypePtr)
+	if err != nil {
+		h.Logger.Error("Failed to get vehicle statistics:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Vehicle statistics retrieved successfully",
+		"data":    response,
+	})
+}
+
+// GetTotalRevenue godoc
+// @Summary Get total revenue
+// @Description Get total actual and estimated revenue from all jukirs
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param vehicle_type query string false "Filter by vehicle type (mobil/motor)"
+// @Param date_range query string false "Filter by date range (hari_ini, minggu_ini, bulan_ini)"
+// @Success 200 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/revenue/total [get]
+func (h *Handlers) GetTotalRevenue(c *gin.Context) {
+	vehicleType := c.Query("vehicle_type")
+	dateRange := c.Query("date_range")
+
+	var vehicleTypePtr *string
+	if vehicleType != "" && (vehicleType == "mobil" || vehicleType == "motor") {
+		vehicleTypePtr = &vehicleType
+	}
+
+	var dateRangePtr *string
+	if dateRange != "" && (dateRange == "hari_ini" || dateRange == "minggu_ini" || dateRange == "bulan_ini") {
+		dateRangePtr = &dateRange
+	}
+
+	response, err := h.AdminUC.GetTotalRevenue(dateRangePtr, vehicleTypePtr)
+	if err != nil {
+		h.Logger.Error("Failed to get total revenue:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Total revenue retrieved successfully",
+		"data":    response,
+	})
+}
+
+// GetJukirsListWithRevenue godoc
+// @Summary Get all jukirs with revenue detail
+// @Description Get list of all jukirs with actual and estimated revenue
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param vehicle_type query string false "Filter by vehicle type (mobil/motor)"
+// @Param date_range query string false "Filter by date range (hari_ini, minggu_ini, bulan_ini)"
+// @Param export query string false "Export to Excel (true/false)"
+// @Success 200 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/jukirs/list [get]
+func (h *Handlers) GetJukirsListWithRevenue(c *gin.Context) {
+	vehicleType := c.Query("vehicle_type")
+	dateRange := c.Query("date_range")
+	includeRevenueStr := c.Query("include_revenue")
+	status := c.Query("status")
+
+	var vehicleTypePtr *string
+	if vehicleType != "" && (vehicleType == "mobil" || vehicleType == "motor") {
+		vehicleTypePtr = &vehicleType
+	}
+
+	var dateRangePtr *string
+	if dateRange != "" && (dateRange == "hari_ini" || dateRange == "minggu_ini" || dateRange == "bulan_ini") {
+		dateRangePtr = &dateRange
+	}
+
+	var includeRevenuePtr *bool
+	if includeRevenueStr == "true" {
+		includeRevenue := true
+		includeRevenuePtr = &includeRevenue
+	}
+
+	var statusPtr *string
+	if status != "" && (status == "active" || status == "inactive" || status == "pending") {
+		statusPtr = &status
+	}
+
+	response, err := h.AdminUC.GetJukirsListWithRevenue(dateRangePtr, vehicleTypePtr, includeRevenuePtr, statusPtr)
+	if err != nil {
+		h.Logger.Error("Failed to get jukirs list:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Jukirs list retrieved successfully",
+		"data":    response,
+	})
+}
+
+// GetChartDataDetailed godoc
+// @Summary Get detailed chart data
+// @Description Get chart data with actual vs estimated revenue (minggu_ini or bulan_ini only)
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param vehicle_type query string false "Filter by vehicle type (mobil/motor)"
+// @Param date_range query string false "Filter by date range (minggu_ini, bulan_ini)"
+// @Success 200 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/chart/data [get]
+func (h *Handlers) GetChartDataDetailed(c *gin.Context) {
+	vehicleType := c.Query("vehicle_type")
+	dateRange := c.Query("date_range")
+
+	var vehicleTypePtr *string
+	if vehicleType != "" && (vehicleType == "mobil" || vehicleType == "motor") {
+		vehicleTypePtr = &vehicleType
+	}
+
+	var dateRangePtr *string
+	if dateRange != "" && (dateRange == "minggu_ini" || dateRange == "bulan_ini") {
+		dateRangePtr = &dateRange
+	}
+
+	response, err := h.AdminUC.GetChartDataDetailed(dateRangePtr, vehicleTypePtr)
+	if err != nil {
+		h.Logger.Error("Failed to get chart data:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Chart data retrieved successfully",
+		"data":    response,
+	})
+}
+
+// GetParkingAreaStatistics godoc
+// @Summary Get parking area statistics
+// @Description Get count of active and inactive parking areas
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/statistics/areas [get]
+func (h *Handlers) GetParkingAreaStatistics(c *gin.Context) {
+	response, err := h.AdminUC.GetParkingAreaStatistics()
+	if err != nil {
+		h.Logger.Error("Failed to get parking area statistics:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Parking area statistics retrieved successfully",
+		"data":    response,
+	})
+}
+
+// GetJukirStatistics godoc
+// @Summary Get jukir statistics
+// @Description Get count of active and inactive jukirs
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/statistics/jukirs [get]
+func (h *Handlers) GetJukirStatistics(c *gin.Context) {
+	response, err := h.AdminUC.GetJukirStatistics()
+	if err != nil {
+		h.Logger.Error("Failed to get jukir statistics:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Jukir statistics retrieved successfully",
+		"data":    response,
+	})
+}
+
+// GetJukirByID godoc
+// @Summary Get jukir by ID
+// @Description Get detailed jukir information by ID
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Jukir ID"
+// @Success 200 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 404 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/jukirs/:id [get]
+func (h *Handlers) GetJukirByID(c *gin.Context) {
+	jukirIDStr := c.Param("id")
+	jukirID, err := strconv.ParseUint(jukirIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid jukir ID",
+		})
+		return
+	}
+
+	// Get date_range filter if provided
+	dateRange := c.Query("date_range")
+	var dateRangePtr *string
+	if dateRange != "" && (dateRange == "hari_ini" || dateRange == "minggu_ini" || dateRange == "bulan_ini") {
+		dateRangePtr = &dateRange
+	}
+
+	response, err := h.AdminUC.GetJukirByID(uint(jukirID), dateRangePtr)
+	if err != nil {
+		h.Logger.Error("Failed to get jukir:", err)
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Jukir retrieved successfully",
 		"data":    response,
 	})
 }

@@ -32,9 +32,9 @@ type Jukir struct {
 }
 
 type CreateJukirRequest struct {
-	UserID    uint   `json:"user_id" validate:"required"`
-	JukirCode string `json:"jukir_code" validate:"required,min=3,max=20"`
-	AreaID    uint   `json:"area_id" validate:"required"`
+	Name   string       `json:"name" validate:"required,min=2,max=100"`
+	AreaID uint         `json:"area_id" validate:"required"`
+	Status *JukirStatus `json:"status,omitempty" validate:"omitempty,oneof=active inactive pending"`
 }
 
 type UpdateJukirRequest struct {
@@ -63,4 +63,40 @@ type VehicleBreakdownResponse struct {
 		In  int `json:"in"`
 		Out int `json:"out"`
 	} `json:"vehicles_by_type"`
+}
+
+type CreateJukirResponse struct {
+	Jukir    Jukir  `json:"jukir"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type JukirRevenueRequest struct {
+	JukirID uint    `json:"jukir_id" validate:"required"`
+	Amount  float64 `json:"amount" validate:"required,min=0"`
+	Date    string  `json:"date" validate:"required"` // Format: YYYY-MM-DD
+	Notes   *string `json:"notes,omitempty" validate:"omitempty,max=500"`
+}
+
+type JukirRevenueResponse struct {
+	ID               uint    `json:"id"`
+	JukirName        string  `json:"jukir_name"`
+	ActualRevenue    float64 `json:"actual_revenue"`
+	EstimatedRevenue float64 `json:"estimated_revenue"`
+	TotalRevenue     float64 `json:"total_revenue"`
+	Date             string  `json:"date"`
+}
+
+type ManualRevenue struct {
+	ID        uint           `json:"id" gorm:"primaryKey"`
+	JukirID   uint           `json:"jukir_id" gorm:"not null"`
+	Amount    float64        `json:"amount" gorm:"not null"`
+	Date      time.Time      `json:"date" gorm:"not null"`
+	Notes     *string        `json:"notes,omitempty"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
+
+	// Relations
+	Jukir Jukir `json:"jukir" gorm:"foreignKey:JukirID"`
 }

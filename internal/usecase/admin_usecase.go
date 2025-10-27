@@ -5,18 +5,31 @@ import (
 	"be-parkir/internal/repository"
 	"errors"
 	"fmt"
+	"math/rand"
+	"strings"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 type AdminUsecase interface {
 	GetOverview(vehicleType *string, dateRange *string) (map[string]interface{}, error)
 	GetJukirs(limit, offset int) ([]entities.Jukir, int64, error)
 	GetJukirsWithRevenue(limit, offset int, vehicleType *string, dateRange *string) ([]map[string]interface{}, int64, error)
+	GetAllJukirsRevenue(dateRange *string) ([]entities.JukirRevenueResponse, error)
+	GetVehicleStatistics(dateRange *string, vehicleType *string) (map[string]interface{}, error)
+	GetTotalRevenue(dateRange *string, vehicleType *string) (map[string]interface{}, error)
+	GetJukirsListWithRevenue(dateRange *string, vehicleType *string, includeRevenue *bool, status *string) ([]map[string]interface{}, error)
+	GetJukirByID(jukirID uint, dateRange *string) (map[string]interface{}, error)
+	GetChartDataDetailed(dateRange *string, vehicleType *string) ([]map[string]interface{}, error)
+	GetParkingAreaStatistics() (map[string]interface{}, error)
+	GetJukirStatistics() (map[string]interface{}, error)
+	AddManualRevenue(req *entities.JukirRevenueRequest) (*entities.JukirRevenueResponse, error)
 	GetParkingAreas() ([]entities.ParkingArea, error)
 	GetParkingAreaDetail(areaID uint) (map[string]interface{}, error)
 	GetAreaTransactions(areaID uint, limit, offset int) ([]entities.ParkingSession, int64, error)
 	GetRevenueTable(limit, offset int, areaID *uint) ([]map[string]interface{}, int64, error)
-	CreateJukir(req *entities.CreateJukirRequest) (*entities.Jukir, error)
+	CreateJukir(req *entities.CreateJukirRequest) (*entities.CreateJukirResponse, error)
 	UpdateJukirStatus(jukirID uint, req *entities.UpdateJukirRequest) (*entities.Jukir, error)
 	GetReports(startDate, endDate time.Time, areaID *uint) (map[string]interface{}, error)
 	GetAllSessions(limit, offset int, filters map[string]interface{}) ([]entities.ParkingSession, int64, error)
@@ -65,8 +78,8 @@ func getDateRange(dateRange string, now time.Time) (time.Time, time.Time) {
 	}
 }
 
-// getPeriods returns array of period data based on date range
-func getPeriods(dateRange string, now time.Time, paymentRepo repository.PaymentRepository) []map[string]interface{} {
+// getPeriods returns array of period data based on date range with actual and estimated revenue
+func getPeriods(dateRange string, now time.Time, paymentRepo repository.PaymentRepository, sessionRepo repository.ParkingSessionRepository, areaRepo repository.ParkingAreaRepository) []map[string]interface{} {
 	switch dateRange {
 	case "bulan_ini": // Last 7 months
 		periods := make([]map[string]interface{}, 7)
@@ -77,12 +90,14 @@ func getPeriods(dateRange string, now time.Time, paymentRepo repository.PaymentR
 			start := time.Date(period.Year(), period.Month(), 1, 0, 0, 0, 0, now.Location())
 			end := start.AddDate(0, 1, 0).Add(-time.Second)
 
-			revenue, _ := paymentRepo.GetRevenueByDateRange(start, end)
+			actualRevenue, _ := paymentRepo.GetRevenueByDateRange(start, end)
+			estimatedRevenue := calculateEstimatedRevenue(sessionRepo, areaRepo, start, end)
 
 			periods[i] = map[string]interface{}{
-				"period":  months[period.Month()-1],
-				"date":    period.Format("2006-01"),
-				"revenue": revenue,
+				"period":            months[period.Month()-1],
+				"date":              period.Format("2006-01"),
+				"actual_revenue":    actualRevenue,
+				"estimated_revenue": estimatedRevenue,
 			}
 		}
 		return periods
@@ -95,12 +110,14 @@ func getPeriods(dateRange string, now time.Time, paymentRepo repository.PaymentR
 			start := time.Date(weekStart.Year(), weekStart.Month(), weekStart.Day(), 0, 0, 0, 0, now.Location())
 			end := start.AddDate(0, 0, 7)
 
-			revenue, _ := paymentRepo.GetRevenueByDateRange(start, end)
+			actualRevenue, _ := paymentRepo.GetRevenueByDateRange(start, end)
+			estimatedRevenue := calculateEstimatedRevenue(sessionRepo, areaRepo, start, end)
 
 			periods[i] = map[string]interface{}{
-				"period":  fmt.Sprintf("Minggu %d", weeksAgo+1),
-				"date":    start.Format("2006-01-02"),
-				"revenue": revenue,
+				"period":            fmt.Sprintf("Minggu %d", weeksAgo+1),
+				"date":              start.Format("2006-01-02"),
+				"actual_revenue":    actualRevenue,
+				"estimated_revenue": estimatedRevenue,
 			}
 		}
 		return periods
@@ -113,16 +130,40 @@ func getPeriods(dateRange string, now time.Time, paymentRepo repository.PaymentR
 			start := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, day.Location())
 			end := start.Add(24 * time.Hour)
 
-			revenue, _ := paymentRepo.GetRevenueByDateRange(start, end)
+			actualRevenue, _ := paymentRepo.GetRevenueByDateRange(start, end)
+			estimatedRevenue := calculateEstimatedRevenue(sessionRepo, areaRepo, start, end)
 
 			periods[i] = map[string]interface{}{
-				"period":  weekdays[day.Weekday()],
-				"date":    day.Format("2006-01-02"),
-				"revenue": revenue,
+				"period":            weekdays[day.Weekday()],
+				"date":              day.Format("2006-01-02"),
+				"actual_revenue":    actualRevenue,
+				"estimated_revenue": estimatedRevenue,
 			}
 		}
 		return periods
 	}
+}
+
+// calculateEstimatedRevenue calculates estimated revenue from active sessions
+func calculateEstimatedRevenue(sessionRepo repository.ParkingSessionRepository, areaRepo repository.ParkingAreaRepository, start, end time.Time) float64 {
+	areas, _ := areaRepo.GetActiveAreas()
+	estimatedRevenue := 0.0
+
+	for _, area := range areas {
+		sessions, _ := sessionRepo.GetSessionsByArea(area.ID, start, end)
+		for _, session := range sessions {
+			if session.SessionStatus == entities.SessionStatusActive && session.CheckoutTime == nil {
+				// Active session - estimate based on duration so far
+				minutes := int(time.Since(session.CheckinTime).Minutes())
+				hours := float64(minutes) / 60.0
+				estimatedRevenue += area.HourlyRate * hours
+			} else if session.SessionStatus == entities.SessionStatusPendingPayment && session.TotalCost != nil {
+				estimatedRevenue += *session.TotalCost
+			}
+		}
+	}
+
+	return estimatedRevenue
 }
 
 func (u *adminUsecase) GetOverview(vehicleType *string, dateRange *string) (map[string]interface{}, error) {
@@ -268,7 +309,7 @@ func (u *adminUsecase) GetOverview(vehicleType *string, dateRange *string) (map[
 	}
 
 	// Get chart data based on date range
-	chartData := getPeriods(dateRangeStr, now, u.paymentRepo)
+	chartData := getPeriods(dateRangeStr, now, u.paymentRepo, u.sessionRepo, u.areaRepo)
 
 	return map[string]interface{}{
 		"total_users":    len(totalUsers),
@@ -358,11 +399,11 @@ func (u *adminUsecase) GetJukirsWithRevenue(limit, offset int, vehicleType *stri
 			"created_at": jukir.CreatedAt,
 			"updated_at": jukir.UpdatedAt,
 			"user": map[string]interface{}{
-				"id":    jukir.User.ID,
-				"name":  jukir.User.Name,
-				"email": jukir.User.Email,
-				"phone": jukir.User.Phone,
-				"role":  jukir.User.Role,
+				"id":       jukir.User.ID,
+				"name":     jukir.User.Name,
+				"username": jukir.User.Email, // Use email field as username
+				"phone":    jukir.User.Phone,
+				"role":     jukir.User.Role,
 			},
 			"area": map[string]interface{}{
 				"id":          jukir.Area.ID,
@@ -381,44 +422,75 @@ func (u *adminUsecase) GetJukirsWithRevenue(limit, offset int, vehicleType *stri
 	return result, count, nil
 }
 
-func (u *adminUsecase) CreateJukir(req *entities.CreateJukirRequest) (*entities.Jukir, error) {
-	// Check if user exists
-	user, err := u.userRepo.GetByID(req.UserID)
-	if err != nil {
-		return nil, errors.New("user not found")
-	}
-
-	// Check if user is already a jukir
-	existingJukir, err := u.jukirRepo.GetByUserID(req.UserID)
-	if err == nil && existingJukir != nil {
-		return nil, errors.New("user is already a jukir")
-	}
-
-	// Check if jukir code is already taken
-	_, err = u.jukirRepo.GetByJukirCode(req.JukirCode)
-	if err == nil {
-		return nil, errors.New("jukir code already taken")
-	}
-
+func (u *adminUsecase) CreateJukir(req *entities.CreateJukirRequest) (*entities.CreateJukirResponse, error) {
 	// Check if area exists
 	area, err := u.areaRepo.GetByID(req.AreaID)
 	if err != nil {
 		return nil, errors.New("parking area not found")
 	}
 
-	// Generate QR token (in production, use a proper QR generation library)
-	qrToken := "QR_" + req.JukirCode + "_" + time.Now().Format("20060102150405")
+	// Generate jukir code
+	jukirCode := generateJukirCode(area.Name, time.Now())
+
+	// Check if jukir code is already taken (retry if needed)
+	for i := 0; i < 10; i++ {
+		_, err = u.jukirRepo.GetByJukirCode(jukirCode)
+		if err != nil {
+			break // Code is available
+		}
+		jukirCode = generateJukirCode(area.Name, time.Now())
+	}
+
+	// Generate simple username (lowercase jukir code)
+	username := strings.ToLower(jukirCode) // Use jukir code as username
+
+	// Generate username (username)
+	email := username
+
+	// Generate simple password (4 random digits)
+	password := generateSimplePassword(4)
+
+	// Hash password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, errors.New("failed to hash password")
+	}
+
+	// Create user with role jukir
+	user := &entities.User{
+		Name:     req.Name,
+		Email:    email,
+		Phone:    "", // Empty phone for jukir
+		Password: string(hashedPassword),
+		Role:     entities.RoleJukir,
+		Status:   entities.UserStatusActive,
+	}
+
+	if err := u.userRepo.Create(user); err != nil {
+		return nil, errors.New("failed to create user")
+	}
+
+	// Generate QR token
+	qrToken := "QR_" + jukirCode + "_" + time.Now().Format("20060102150405")
+
+	// Determine status
+	status := entities.JukirStatusPending
+	if req.Status != nil {
+		status = *req.Status
+	}
 
 	// Create jukir
 	jukir := &entities.Jukir{
-		UserID:    req.UserID,
-		JukirCode: req.JukirCode,
+		UserID:    user.ID,
+		JukirCode: jukirCode,
 		AreaID:    req.AreaID,
 		QRToken:   qrToken,
-		Status:    entities.JukirStatusPending,
+		Status:    status,
 	}
 
 	if err := u.jukirRepo.Create(jukir); err != nil {
+		// Rollback: delete user if jukir creation fails
+		u.userRepo.Delete(user.ID)
 		return nil, errors.New("failed to create jukir")
 	}
 
@@ -426,7 +498,631 @@ func (u *adminUsecase) CreateJukir(req *entities.CreateJukirRequest) (*entities.
 	jukir.User = *user
 	jukir.Area = *area
 
-	return jukir, nil
+	return &entities.CreateJukirResponse{
+		Jukir:    *jukir,
+		Username: email,
+		Password: password,
+	}, nil
+}
+
+// generateJukirCode generates a unique jukir code based on area and timestamp
+func generateJukirCode(areaName string, timestamp time.Time) string {
+	// Get first 3 letters of area name, uppercase
+	areaPrefix := strings.ToUpper(areaName[:min(3, len(areaName))])
+	// Get last 4 digits of timestamp
+	timeSuffix := timestamp.Format("1504") // HHMM format
+	return areaPrefix + timeSuffix
+}
+
+// generatePassword generates a random password (not used anymore)
+func generatePassword(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
+}
+
+// generateSimplePassword generates a simple numeric password
+func generateSimplePassword(length int) string {
+	const digits = "0123456789"
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = digits[rand.Intn(len(digits))]
+	}
+	return string(b)
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func (u *adminUsecase) GetAllJukirsRevenue(dateRange *string) ([]entities.JukirRevenueResponse, error) {
+	// Get all jukirs
+	jukirs, _, err := u.jukirRepo.List(1000, 0)
+	if err != nil {
+		return nil, errors.New("failed to get jukirs")
+	}
+
+	// Determine date range
+	now := time.Now()
+	dateRangeStr := "hari_ini" // default
+	if dateRange != nil && *dateRange != "" {
+		dateRangeStr = *dateRange
+	}
+
+	startTime, endTime := getDateRange(dateRangeStr, now)
+
+	result := []entities.JukirRevenueResponse{}
+
+	for _, jukir := range jukirs {
+		// Get sessions for this jukir within date range
+		allSessions, err := u.sessionRepo.GetSessionsByArea(jukir.AreaID, startTime, endTime)
+		if err != nil {
+			continue
+		}
+
+		// Filter by jukir ID
+		var jukirSessions []entities.ParkingSession
+		for _, session := range allSessions {
+			if session.JukirID != nil && *session.JukirID == jukir.ID {
+				jukirSessions = append(jukirSessions, session)
+			}
+		}
+
+		// Calculate revenue
+		totalRevenue := 0.0
+		for _, session := range jukirSessions {
+			if session.PaymentStatus == entities.PaymentStatusPaid && session.TotalCost != nil {
+				totalRevenue += *session.TotalCost
+			}
+		}
+
+		result = append(result, entities.JukirRevenueResponse{
+			ID:               jukir.ID,
+			JukirName:        jukir.User.Name,
+			ActualRevenue:    totalRevenue,
+			EstimatedRevenue: totalRevenue,
+			TotalRevenue:     totalRevenue,
+			Date:             startTime.Format("2006-01-02"),
+		})
+	}
+
+	return result, nil
+}
+
+func (u *adminUsecase) GetVehicleStatistics(dateRange *string, vehicleType *string) (map[string]interface{}, error) {
+	now := time.Now()
+	dateRangeStr := "hari_ini"
+	if dateRange != nil && *dateRange != "" {
+		dateRangeStr = *dateRange
+	}
+
+	startTime, endTime := getDateRange(dateRangeStr, now)
+
+	allAreas, err := u.areaRepo.GetActiveAreas()
+	if err != nil {
+		return nil, errors.New("failed to get areas")
+	}
+
+	var sessions []entities.ParkingSession
+	for _, area := range allAreas {
+		areaSessions, err := u.sessionRepo.GetSessionsByArea(area.ID, startTime, endTime)
+		if err != nil {
+			continue
+		}
+
+		// Filter by vehicle type if specified
+		if vehicleType != nil && *vehicleType != "" {
+			for _, session := range areaSessions {
+				if string(session.VehicleType) == *vehicleType {
+					sessions = append(sessions, session)
+				}
+			}
+		} else {
+			sessions = append(sessions, areaSessions...)
+		}
+	}
+
+	vehiclesIn := 0
+	vehiclesOut := 0
+	vehiclesInMobil := 0
+	vehiclesOutMobil := 0
+	vehiclesInMotor := 0
+	vehiclesOutMotor := 0
+
+	for _, session := range sessions {
+		vehiclesIn++
+
+		if session.VehicleType == entities.VehicleTypeMobil {
+			vehiclesInMobil++
+			if session.CheckoutTime != nil {
+				vehiclesOutMobil++
+			}
+		} else if session.VehicleType == entities.VehicleTypeMotor {
+			vehiclesInMotor++
+			if session.CheckoutTime != nil {
+				vehiclesOutMotor++
+			}
+		}
+
+		if session.CheckoutTime != nil {
+			vehiclesOut++
+		}
+	}
+
+	return map[string]interface{}{
+		"total_in":  vehiclesIn,
+		"total_out": vehiclesOut,
+		"vehicles_by_type": map[string]interface{}{
+			"mobil": map[string]interface{}{
+				"in":  vehiclesInMobil,
+				"out": vehiclesOutMobil,
+			},
+			"motor": map[string]interface{}{
+				"in":  vehiclesInMotor,
+				"out": vehiclesOutMotor,
+			},
+		},
+		"date_range": dateRangeStr,
+	}, nil
+}
+
+func (u *adminUsecase) GetTotalRevenue(dateRange *string, vehicleType *string) (map[string]interface{}, error) {
+	now := time.Now()
+	dateRangeStr := "hari_ini"
+	if dateRange != nil && *dateRange != "" {
+		dateRangeStr = *dateRange
+	}
+
+	startTime, endTime := getDateRange(dateRangeStr, now)
+
+	allAreas, err := u.areaRepo.GetActiveAreas()
+	if err != nil {
+		return nil, errors.New("failed to get areas")
+	}
+
+	var sessions []entities.ParkingSession
+	for _, area := range allAreas {
+		areaSessions, err := u.sessionRepo.GetSessionsByArea(area.ID, startTime, endTime)
+		if err != nil {
+			continue
+		}
+
+		if vehicleType != nil && *vehicleType != "" {
+			for _, session := range areaSessions {
+				if string(session.VehicleType) == *vehicleType {
+					sessions = append(sessions, session)
+				}
+			}
+		} else {
+			sessions = append(sessions, areaSessions...)
+		}
+	}
+
+	actualRevenue := 0.0
+	estimatedRevenue := 0.0
+
+	allAreasList, _ := u.areaRepo.GetActiveAreas()
+	areaMap := make(map[uint]entities.ParkingArea)
+	for _, area := range allAreasList {
+		areaMap[area.ID] = area
+	}
+
+	for _, session := range sessions {
+		// Actual revenue - from paid sessions
+		if session.PaymentStatus == entities.PaymentStatusPaid && session.TotalCost != nil {
+			actualRevenue += *session.TotalCost
+		}
+
+		// Estimated revenue
+		if session.SessionStatus == entities.SessionStatusActive && session.CheckoutTime == nil {
+			area := areaMap[session.AreaID]
+			minutes := int(time.Since(session.CheckinTime).Minutes())
+			hours := float64(minutes) / 60.0
+			estimatedRevenue += area.HourlyRate * hours
+		} else if session.SessionStatus == entities.SessionStatusPendingPayment && session.TotalCost != nil {
+			estimatedRevenue += *session.TotalCost
+		}
+	}
+
+	return map[string]interface{}{
+		"actual_revenue":    actualRevenue,
+		"estimated_revenue": estimatedRevenue,
+		"total_revenue":     actualRevenue + estimatedRevenue,
+		"date_range":        dateRangeStr,
+	}, nil
+}
+
+func (u *adminUsecase) GetJukirsListWithRevenue(dateRange *string, vehicleType *string, includeRevenue *bool, status *string) ([]map[string]interface{}, error) {
+	// Get all jukirs
+	jukirs, _, err := u.jukirRepo.List(1000, 0)
+	if err != nil {
+		return nil, errors.New("failed to get jukirs")
+	}
+
+	// Filter by status if provided
+	if status != nil && *status != "" {
+		filteredJukirs := []entities.Jukir{}
+		for _, jukir := range jukirs {
+			if string(jukir.Status) == *status {
+				filteredJukirs = append(filteredJukirs, jukir)
+			}
+		}
+		jukirs = filteredJukirs
+	}
+
+	now := time.Now()
+	dateRangeStr := "hari_ini"
+	if dateRange != nil && *dateRange != "" {
+		dateRangeStr = *dateRange
+	}
+
+	startTime, endTime := getDateRange(dateRangeStr, now)
+
+	result := []map[string]interface{}{}
+	for _, jukir := range jukirs {
+		allSessions, err := u.sessionRepo.GetSessionsByArea(jukir.AreaID, startTime, endTime)
+		if err != nil {
+			continue
+		}
+
+		// Filter by jukir ID and vehicle type
+		var jukirSessions []entities.ParkingSession
+		for _, session := range allSessions {
+			if session.JukirID != nil && *session.JukirID == jukir.ID {
+				if vehicleType == nil || *vehicleType == "" {
+					jukirSessions = append(jukirSessions, session)
+				} else if string(session.VehicleType) == *vehicleType {
+					jukirSessions = append(jukirSessions, session)
+				}
+			}
+		}
+
+		// Calculate revenues
+		actualRevenue := 0.0
+		estimatedRevenue := 0.0
+
+		areaMap := make(map[uint]entities.ParkingArea)
+		area, _ := u.areaRepo.GetByID(jukir.AreaID)
+		areaMap[jukir.AreaID] = *area
+
+		for _, session := range jukirSessions {
+			if session.PaymentStatus == entities.PaymentStatusPaid && session.TotalCost != nil {
+				actualRevenue += *session.TotalCost
+			}
+
+			if session.SessionStatus == entities.SessionStatusActive && session.CheckoutTime == nil {
+				area := areaMap[session.AreaID]
+				minutes := int(time.Since(session.CheckinTime).Minutes())
+				hours := float64(minutes) / 60.0
+				estimatedRevenue += area.HourlyRate * hours
+			} else if session.SessionStatus == entities.SessionStatusPendingPayment && session.TotalCost != nil {
+				estimatedRevenue += *session.TotalCost
+			}
+		}
+
+		// Build response
+		item := map[string]interface{}{
+			"id":     jukir.ID,
+			"name":   jukir.User.Name,
+			"status": string(jukir.Status),
+			"area": map[string]interface{}{
+				"id":   jukir.Area.ID,
+				"name": jukir.Area.Name,
+			},
+			"jukir_code": jukir.JukirCode,
+		}
+
+		// Add revenue only if includeRevenue is true
+		if includeRevenue != nil && *includeRevenue {
+			item["actual_revenue"] = actualRevenue
+			item["estimated_revenue"] = estimatedRevenue
+			item["total_revenue"] = actualRevenue + estimatedRevenue
+			item["date"] = startTime.Format("2006-01-02")
+		}
+
+		result = append(result, item)
+	}
+
+	return result, nil
+}
+
+func (u *adminUsecase) GetJukirByID(jukirID uint, dateRange *string) (map[string]interface{}, error) {
+	jukir, err := u.jukirRepo.GetByID(jukirID)
+	if err != nil {
+		return nil, errors.New("jukir not found")
+	}
+
+	response := map[string]interface{}{
+		"id":         jukir.ID,
+		"name":       jukir.User.Name,
+		"status":     string(jukir.Status),
+		"jukir_code": jukir.JukirCode,
+		"qr_token":   jukir.QRToken,
+		"user": map[string]interface{}{
+			"id":       jukir.User.ID,
+			"name":     jukir.User.Name,
+			"username": jukir.User.Email, // Use email field as username
+		},
+		"area": map[string]interface{}{
+			"id":      jukir.Area.ID,
+			"name":    jukir.Area.Name,
+			"address": jukir.Area.Address,
+		},
+		"created_at": jukir.CreatedAt,
+		"updated_at": jukir.UpdatedAt,
+	}
+
+	// Calculate revenue if dateRange is provided
+	if dateRange != nil && *dateRange != "" {
+		now := time.Now()
+		startTime, endTime := getDateRange(*dateRange, now)
+
+		allSessions, err := u.sessionRepo.GetSessionsByArea(jukir.AreaID, startTime, endTime)
+		if err == nil {
+			// Filter by jukir ID
+			var jukirSessions []entities.ParkingSession
+			for _, session := range allSessions {
+				if session.JukirID != nil && *session.JukirID == jukir.ID {
+					jukirSessions = append(jukirSessions, session)
+				}
+			}
+
+			actualRevenue := 0.0
+			estimatedRevenue := 0.0
+
+			areaMap := make(map[uint]entities.ParkingArea)
+			area, _ := u.areaRepo.GetByID(jukir.AreaID)
+			areaMap[jukir.AreaID] = *area
+
+			for _, session := range jukirSessions {
+				if session.PaymentStatus == entities.PaymentStatusPaid && session.TotalCost != nil {
+					actualRevenue += *session.TotalCost
+				}
+
+				if session.SessionStatus == entities.SessionStatusActive && session.CheckoutTime == nil {
+					area := areaMap[session.AreaID]
+					minutes := int(time.Since(session.CheckinTime).Minutes())
+					hours := float64(minutes) / 60.0
+					estimatedRevenue += area.HourlyRate * hours
+				} else if session.SessionStatus == entities.SessionStatusPendingPayment && session.TotalCost != nil {
+					estimatedRevenue += *session.TotalCost
+				}
+			}
+
+			// If minggu_ini, show breakdown per day (7 days)
+			if *dateRange == "minggu_ini" {
+				revenueDays := []map[string]interface{}{}
+				weekdays := []string{"Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"}
+
+				for i := 0; i < 7; i++ {
+					daysAgo := 6 - i
+					day := now.AddDate(0, 0, -daysAgo)
+					start := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, day.Location())
+					end := start.Add(24 * time.Hour)
+
+					daySessions, _ := u.sessionRepo.GetSessionsByArea(jukir.AreaID, start, end)
+					var jukirDaySessions []entities.ParkingSession
+					for _, session := range daySessions {
+						if session.JukirID != nil && *session.JukirID == jukir.ID {
+							jukirDaySessions = append(jukirDaySessions, session)
+						}
+					}
+
+					dayActual := 0.0
+					dayEstimated := 0.0
+
+					for _, session := range jukirDaySessions {
+						if session.PaymentStatus == entities.PaymentStatusPaid && session.TotalCost != nil {
+							dayActual += *session.TotalCost
+						}
+
+						if session.SessionStatus == entities.SessionStatusActive && session.CheckoutTime == nil {
+							area := areaMap[session.AreaID]
+							minutes := int(time.Since(session.CheckinTime).Minutes())
+							hours := float64(minutes) / 60.0
+							dayEstimated += area.HourlyRate * hours
+						} else if session.SessionStatus == entities.SessionStatusPendingPayment && session.TotalCost != nil {
+							dayEstimated += *session.TotalCost
+						}
+					}
+
+					revenueDays = append(revenueDays, map[string]interface{}{
+						"day":               weekdays[day.Weekday()],
+						"date":              day.Format("2006-01-02"),
+						"actual_revenue":    dayActual,
+						"estimated_revenue": dayEstimated,
+						"total_revenue":     dayActual + dayEstimated,
+					})
+				}
+
+				response["revenue"] = map[string]interface{}{
+					"actual_revenue":    actualRevenue,
+					"estimated_revenue": estimatedRevenue,
+					"total_revenue":     actualRevenue + estimatedRevenue,
+					"date_range":        *dateRange,
+					"breakdown":         revenueDays,
+				}
+			} else {
+				response["revenue"] = map[string]interface{}{
+					"actual_revenue":    actualRevenue,
+					"estimated_revenue": estimatedRevenue,
+					"total_revenue":     actualRevenue + estimatedRevenue,
+					"date_range":        *dateRange,
+				}
+			}
+		}
+	}
+
+	return response, nil
+}
+
+func (u *adminUsecase) GetChartDataDetailed(dateRange *string, vehicleType *string) ([]map[string]interface{}, error) {
+	now := time.Now()
+	dateRangeStr := "minggu_ini" // Default untuk chart
+	if dateRange != nil && *dateRange != "" {
+		dateRangeStr = *dateRange
+	}
+
+	// Only allow minggu_ini or bulan_ini for chart
+	if dateRangeStr != "minggu_ini" && dateRangeStr != "bulan_ini" {
+		dateRangeStr = "minggu_ini"
+	}
+
+	return getPeriods(dateRangeStr, now, u.paymentRepo, u.sessionRepo, u.areaRepo), nil
+}
+
+func (u *adminUsecase) GetParkingAreaStatistics() (map[string]interface{}, error) {
+	// Get all areas
+	areas, _, err := u.areaRepo.List(1000, 0)
+	if err != nil {
+		return nil, errors.New("failed to get parking areas")
+	}
+
+	// Count by status
+	activeCount := 0
+	inactiveCount := 0
+	maintenanceCount := 0
+
+	for _, area := range areas {
+		switch area.Status {
+		case entities.AreaStatusActive:
+			activeCount++
+		case entities.AreaStatusInactive:
+			inactiveCount++
+		case entities.AreaStatusMaintenance:
+			maintenanceCount++
+		}
+	}
+
+	return map[string]interface{}{
+		"total":       len(areas),
+		"active":      activeCount,
+		"inactive":    inactiveCount,
+		"maintenance": maintenanceCount,
+	}, nil
+}
+
+func (u *adminUsecase) GetJukirStatistics() (map[string]interface{}, error) {
+	// Get all jukirs
+	jukirs, _, err := u.jukirRepo.List(1000, 0)
+	if err != nil {
+		return nil, errors.New("failed to get jukirs")
+	}
+
+	// Count by status
+	activeCount := 0
+	inactiveCount := 0
+
+	for _, jukir := range jukirs {
+		switch jukir.Status {
+		case entities.JukirStatusActive:
+			activeCount++
+		case entities.JukirStatusInactive:
+			inactiveCount++
+		}
+	}
+
+	return map[string]interface{}{
+		"total":    len(jukirs),
+		"active":   activeCount,
+		"inactive": inactiveCount,
+	}, nil
+}
+
+func (u *adminUsecase) AddManualRevenue(req *entities.JukirRevenueRequest) (*entities.JukirRevenueResponse, error) {
+	// Get jukir
+	jukir, err := u.jukirRepo.GetByID(req.JukirID)
+	if err != nil {
+		return nil, errors.New("jukir not found")
+	}
+
+	// Parse date
+	date, err := time.Parse("2006-01-02", req.Date)
+	if err != nil {
+		return nil, errors.New("invalid date format. Use YYYY-MM-DD")
+	}
+
+	startTime := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
+	endTime := startTime.Add(24 * time.Hour)
+
+	// Get jukir sessions for this date
+	allSessions, err := u.sessionRepo.GetSessionsByArea(jukir.AreaID, startTime, endTime)
+	if err != nil {
+		return nil, errors.New("failed to get sessions")
+	}
+
+	// Filter by jukir ID
+	var jukirSessions []entities.ParkingSession
+	for _, session := range allSessions {
+		if session.JukirID != nil && *session.JukirID == jukir.ID {
+			jukirSessions = append(jukirSessions, session)
+		}
+	}
+
+	// Create a dummy session for manual revenue entry (if no session exists)
+	if len(jukirSessions) == 0 {
+		// Create a completed session for manual revenue
+		duration := 60 // 1 hour dummy
+		session := &entities.ParkingSession{
+			JukirID:        &jukir.ID,
+			AreaID:         jukir.AreaID,
+			VehicleType:    entities.VehicleTypeMobil, // Default to mobil
+			IsManualRecord: true,
+			CheckinTime:    startTime,
+			CheckoutTime:   &endTime,
+			Duration:       &duration,
+			TotalCost:      &req.Amount,
+			PaymentStatus:  entities.PaymentStatusPaid,
+			SessionStatus:  entities.SessionStatusCompleted,
+		}
+
+		if err := u.sessionRepo.Create(session); err != nil {
+			return nil, errors.New("failed to create manual session")
+		}
+
+		// Create payment record
+		payment := &entities.Payment{
+			SessionID:     session.ID,
+			Amount:        req.Amount,
+			PaymentMethod: entities.PaymentMethodCash,
+			Status:        entities.PaymentStatusPaid,
+		}
+
+		if err := u.paymentRepo.Create(payment); err != nil {
+			return nil, errors.New("failed to create payment record")
+		}
+	} else {
+		// If sessions exist, add manual revenue to existing total
+		// Just update the first session's total cost to include manual amount
+		if len(jukirSessions) > 0 {
+			session := jukirSessions[0]
+			currentTotal := 0.0
+			if session.TotalCost != nil {
+				currentTotal = *session.TotalCost
+			}
+			newTotal := currentTotal + req.Amount
+			session.TotalCost = &newTotal
+			if err := u.sessionRepo.Update(&session); err != nil {
+				return nil, errors.New("failed to update session")
+			}
+		}
+	}
+
+	return &entities.JukirRevenueResponse{
+		ID:               jukir.ID,
+		JukirName:        jukir.User.Name,
+		ActualRevenue:    req.Amount,
+		EstimatedRevenue: 0,
+		TotalRevenue:     req.Amount,
+		Date:             req.Date,
+	}, nil
 }
 
 func (u *adminUsecase) UpdateJukirStatus(jukirID uint, req *entities.UpdateJukirRequest) (*entities.Jukir, error) {
