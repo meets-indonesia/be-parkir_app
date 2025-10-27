@@ -17,7 +17,7 @@ services:
       - REDIS_PASSWORD=
       - REDIS_DB=0
       - JWT_SECRET=vvmfHfZ68t-pgW-7izB8o5qfWV3_yvBKE9LQXMSIreI
-      - JWT_ACCESS_EXPIRY=15m
+      - JWT_ACCESS_EXPIRY=12h
       - JWT_REFRESH_EXPIRY=7d
       - API_KEY=be-parkir-api-key-2025
       - API_KEY_REQUIRED=true

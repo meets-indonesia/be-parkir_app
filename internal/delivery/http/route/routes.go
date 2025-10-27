@@ -34,6 +34,7 @@ func SetupRoutes(router *gin.Engine, handlers *handler.Handlers, jwtConfig useca
 		{
 			auth.POST("/register", handlers.Register)
 			auth.POST("/login", handlers.Login)
+			auth.POST("/login-jukir", handlers.LoginJukir)
 			auth.POST("/refresh", handlers.RefreshToken)
 			auth.POST("/logout", middleware.AuthMiddleware(handlers.AuthUC), handlers.Logout)
 		}
@@ -78,10 +79,12 @@ func SetupRoutes(router *gin.Engine, handlers *handler.Handlers, jwtConfig useca
 		{
 			admin.GET("/overview", handlers.GetAdminOverview)
 			admin.GET("/jukirs", handlers.GetJukirs)
-			admin.GET("/jukirs/revenue", handlers.GetAllJukirsRevenue)
+			admin.GET("/jukirs/revenue", handlers.GetJukirsWithRevenue)
 			admin.GET("/jukirs/list", handlers.GetJukirsListWithRevenue)
 			admin.GET("/jukirs/:id", handlers.GetJukirByID)
 			admin.POST("/jukirs", handlers.CreateJukir)
+			admin.PUT("/jukirs/:id", handlers.UpdateJukir)
+			admin.DELETE("/jukirs/:id", handlers.DeleteJukir)
 			admin.POST("/jukirs/manual-revenue", handlers.AddManualRevenue)
 			admin.PUT("/jukirs/:id/status", handlers.UpdateJukirStatus)
 			admin.GET("/statistics/vehicles", handlers.GetVehicleStatistics)
@@ -93,9 +96,11 @@ func SetupRoutes(router *gin.Engine, handlers *handler.Handlers, jwtConfig useca
 			admin.GET("/sessions", handlers.GetAllSessions)
 			admin.GET("/areas", handlers.GetParkingAreas)
 			admin.GET("/areas/:id", handlers.GetParkingAreaDetail)
+			admin.GET("/areas/:id/status", handlers.GetParkingAreaStatus)
 			admin.GET("/areas/:id/transactions", handlers.GetAreaTransactions)
 			admin.POST("/areas", handlers.CreateParkingArea)
 			admin.PUT("/areas/:id", handlers.UpdateParkingArea)
+			admin.DELETE("/areas/:id", handlers.DeleteParkingArea)
 			admin.GET("/revenue-table", handlers.GetRevenueTable)
 			admin.GET("/sse-status", handlers.GetEventStreamStatus) // SSE connection status
 		}

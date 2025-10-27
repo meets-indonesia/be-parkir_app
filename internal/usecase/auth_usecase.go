@@ -15,6 +15,7 @@ import (
 type AuthUsecase interface {
 	Register(req *entities.CreateUserRequest) (*entities.LoginResponse, error)
 	Login(req *entities.LoginRequest) (*entities.LoginResponse, error)
+	LoginJukir(username, password string) (*entities.LoginResponse, error)
 	RefreshToken(req *entities.RefreshTokenRequest) (*entities.LoginResponse, error)
 	Logout(token string) error
 	ValidateToken(tokenString string) (*jwt.Token, error)
@@ -114,10 +115,58 @@ func (u *authUsecase) Login(req *entities.LoginRequest) (*entities.LoginResponse
 		return nil, errors.New("failed to store refresh token")
 	}
 
+	// Remove jukir_profile from response to avoid circular reference
+	userWithoutProfile := *user
+	userWithoutProfile.JukirProfile = nil
+
 	return &entities.LoginResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
-		User:         *user,
+		User:         userWithoutProfile,
+	}, nil
+}
+
+func (u *authUsecase) LoginJukir(username, password string) (*entities.LoginResponse, error) {
+	// Get user by username (username jukir is stored as email in database)
+	user, err := u.userRepo.GetByEmail(username)
+	if err != nil {
+		return nil, errors.New("invalid username or password")
+	}
+
+	// Check if user is jukir
+	if user.Role != entities.RoleJukir {
+		return nil, errors.New("user is not a jukir")
+	}
+
+	// Check password
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
+		return nil, errors.New("invalid username or password")
+	}
+
+	// Check if user is active
+	if user.Status != entities.UserStatusActive {
+		return nil, errors.New("account is not active")
+	}
+
+	// Generate tokens
+	accessToken, refreshToken, err := u.generateTokens(user)
+	if err != nil {
+		return nil, errors.New("failed to generate tokens")
+	}
+
+	// Store refresh token in Redis
+	if err := u.storeRefreshToken(user.ID, refreshToken); err != nil {
+		return nil, errors.New("failed to store refresh token")
+	}
+
+	// Remove jukir_profile from response to avoid circular reference
+	userWithoutProfile := *user
+	userWithoutProfile.JukirProfile = nil
+
+	return &entities.LoginResponse{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		User:         userWithoutProfile,
 	}, nil
 }
 
@@ -165,10 +214,14 @@ func (u *authUsecase) RefreshToken(req *entities.RefreshTokenRequest) (*entities
 		return nil, errors.New("failed to store refresh token")
 	}
 
+	// Remove jukir_profile from response to avoid circular reference
+	userWithoutProfile := *user
+	userWithoutProfile.JukirProfile = nil
+
 	return &entities.LoginResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
-		User:         *user,
+		User:         userWithoutProfile,
 	}, nil
 }
 

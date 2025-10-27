@@ -214,6 +214,111 @@ func (h *Handlers) CreateJukir(c *gin.Context) {
 	})
 }
 
+// UpdateJukir godoc
+// @Summary Update jukir
+// @Description Update jukir information
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Jukir ID"
+// @Param request body entities.UpdateJukirRequest true "Jukir update data"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/jukirs/{id} [put]
+func (h *Handlers) UpdateJukir(c *gin.Context) {
+	idStr := c.Param("id")
+	jukirID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid jukir ID",
+		})
+		return
+	}
+
+	var req entities.UpdateJukirRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.Logger.Error("Failed to bind JSON:", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid request data",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	// Validate request
+	validate := validator.New()
+	if err := validate.Struct(req); err != nil {
+		h.Logger.Error("Validation failed:", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Validation failed",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	response, err := h.AdminUC.UpdateJukir(uint(jukirID), &req)
+	if err != nil {
+		h.Logger.Error("Failed to update jukir:", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Jukir updated successfully",
+		"data":    response,
+	})
+}
+
+// DeleteJukir godoc
+// @Summary Delete jukir
+// @Description Delete a jukir by ID
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Jukir ID"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/jukirs/{id} [delete]
+func (h *Handlers) DeleteJukir(c *gin.Context) {
+	idStr := c.Param("id")
+	jukirID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid jukir ID",
+		})
+		return
+	}
+
+	err = h.AdminUC.DeleteJukir(uint(jukirID))
+	if err != nil {
+		h.Logger.Error("Failed to delete jukir:", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Jukir deleted successfully",
+	})
+}
+
 // UpdateJukirStatus godoc
 // @Summary Update jukir status
 // @Description Update jukir status (active/inactive)
@@ -543,6 +648,48 @@ func (h *Handlers) GetParkingAreaDetail(c *gin.Context) {
 	})
 }
 
+// GetParkingAreaStatus godoc
+// @Summary Get parking area status
+// @Description Get parking area status including available and occupied slots for mobil and motor
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Area ID"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 404 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/areas/{id}/status [get]
+func (h *Handlers) GetParkingAreaStatus(c *gin.Context) {
+	areaIDStr := c.Param("id")
+	areaID, err := strconv.ParseUint(areaIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid area ID",
+		})
+		return
+	}
+
+	response, err := h.AdminUC.GetParkingAreaStatus(uint(areaID))
+	if err != nil {
+		h.Logger.Error("Failed to get parking area status:", err)
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Parking area status retrieved successfully",
+		"data":    response,
+	})
+}
+
 // GetAreaTransactions godoc
 // @Summary Get area transactions
 // @Description Get transaction details by parking area
@@ -589,7 +736,13 @@ func (h *Handlers) GetAreaTransactions(c *gin.Context) {
 		"success": true,
 		"message": "Area transactions retrieved successfully",
 		"data":    response,
-		"total":   count,
+		"meta": gin.H{
+			"pagination": gin.H{
+				"limit":  limit,
+				"offset": offset,
+				"total":  count,
+			},
+		},
 	})
 }
 
@@ -639,7 +792,13 @@ func (h *Handlers) GetRevenueTable(c *gin.Context) {
 		"success": true,
 		"message": "Revenue table retrieved successfully",
 		"data":    response,
-		"total":   count,
+		"meta": gin.H{
+			"pagination": gin.H{
+				"limit":  limit,
+				"offset": offset,
+				"total":  count,
+			},
+		},
 	})
 }
 
@@ -705,6 +864,47 @@ func (h *Handlers) UpdateParkingArea(c *gin.Context) {
 		"success": true,
 		"message": "Parking area updated successfully",
 		"data":    response,
+	})
+}
+
+// DeleteParkingArea godoc
+// @Summary Delete parking area
+// @Description Delete a parking area by ID
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Area ID"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 404 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/areas/{id} [delete]
+func (h *Handlers) DeleteParkingArea(c *gin.Context) {
+	idStr := c.Param("id")
+	areaID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid area ID",
+		})
+		return
+	}
+
+	err = h.AdminUC.DeleteParkingArea(uint(areaID))
+	if err != nil {
+		h.Logger.Error("Failed to delete parking area:", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Parking area deleted successfully",
 	})
 }
 
@@ -1055,6 +1255,7 @@ func (h *Handlers) GetJukirStatistics(c *gin.Context) {
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "Jukir ID"
+// @Param include_revenue query boolean false "Include revenue data (true/false)"
 // @Success 200 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{}
 // @Failure 404 {object} map[string]interface{}
@@ -1071,11 +1272,18 @@ func (h *Handlers) GetJukirByID(c *gin.Context) {
 		return
 	}
 
+	// Get include_revenue query param
+	includeRevenue := c.Query("include_revenue") == "true"
+
 	// Get date_range filter if provided
 	dateRange := c.Query("date_range")
 	var dateRangePtr *string
 	if dateRange != "" && (dateRange == "hari_ini" || dateRange == "minggu_ini" || dateRange == "bulan_ini") {
 		dateRangePtr = &dateRange
+	} else if includeRevenue && dateRange == "" {
+		// Default to minggu_ini if include_revenue is true but no date_range specified
+		defaultDateRange := "minggu_ini"
+		dateRangePtr = &defaultDateRange
 	}
 
 	response, err := h.AdminUC.GetJukirByID(uint(jukirID), dateRangePtr)
@@ -1092,5 +1300,59 @@ func (h *Handlers) GetJukirByID(c *gin.Context) {
 		"success": true,
 		"message": "Jukir retrieved successfully",
 		"data":    response,
+	})
+}
+
+// GetJukirsWithRevenue godoc
+// @Summary Get all jukirs with revenue
+// @Description Get list of all jukirs with their revenue data filtered by date range
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param date_range query string false "Filter by date range (hari_ini, minggu_ini, bulan_ini)" default(hari_ini)
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/jukirs/revenue [get]
+func (h *Handlers) GetJukirsWithRevenue(c *gin.Context) {
+	dateRange := c.DefaultQuery("date_range", "hari_ini")
+
+	var dateRangePtr *string
+	if dateRange != "" {
+		if dateRange == "hari_ini" || dateRange == "minggu_ini" || dateRange == "bulan_ini" {
+			dateRangePtr = &dateRange
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "Invalid date_range. Use: hari_ini, minggu_ini, or bulan_ini",
+			})
+			return
+		}
+	}
+
+	response, count, err := h.AdminUC.GetAllJukirsListWithRevenue(dateRangePtr)
+	if err != nil {
+		h.Logger.Error("Failed to get jukirs with revenue:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Jukirs with revenue retrieved successfully",
+		"data":    response,
+		"meta": gin.H{
+			"pagination": gin.H{
+				"total": count,
+			},
+			"filter": gin.H{
+				"date_range": dateRange,
+			},
+		},
 	})
 }

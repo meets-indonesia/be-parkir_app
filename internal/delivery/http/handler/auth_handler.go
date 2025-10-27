@@ -112,6 +112,64 @@ func (h *Handlers) Login(c *gin.Context) {
 	})
 }
 
+// LoginJukir godoc
+// @Summary Login jukir
+// @Description Authenticate jukir by username and return JWT tokens
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body map[string]string true "Login credentials (username, password)"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Router /api/v1/auth/login-jukir [post]
+func (h *Handlers) LoginJukir(c *gin.Context) {
+	var req map[string]string
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.Logger.Error("Failed to bind JSON:", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid request data",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	username, ok := req["username"]
+	if !ok || username == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "username is required",
+		})
+		return
+	}
+
+	password, ok := req["password"]
+	if !ok || password == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "password is required",
+		})
+		return
+	}
+
+	response, err := h.AuthUC.LoginJukir(username, password)
+	if err != nil {
+		h.Logger.Error("Login failed:", err)
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Login successful",
+		"data":    response,
+	})
+}
+
 // RefreshToken godoc
 // @Summary Refresh JWT token
 // @Description Refresh access token using refresh token

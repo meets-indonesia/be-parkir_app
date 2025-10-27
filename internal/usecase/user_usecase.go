@@ -27,6 +27,8 @@ func (u *userUsecase) GetProfile(userID uint) (*entities.User, error) {
 	if err != nil {
 		return nil, errors.New("user not found")
 	}
+	// Remove jukir_profile from response to avoid circular reference
+	user.JukirProfile = nil
 	return user, nil
 }
 
@@ -56,6 +58,8 @@ func (u *userUsecase) UpdateProfile(userID uint, req *entities.UpdateUserRequest
 		return nil, errors.New("failed to update profile")
 	}
 
+	// Remove jukir_profile from response to avoid circular reference
+	user.JukirProfile = nil
 	return user, nil
 }
 
@@ -64,5 +68,7 @@ func (u *userUsecase) GetUserByID(userID uint) (*entities.User, error) {
 	if err != nil {
 		return nil, errors.New("user not found")
 	}
+	// Remove jukir_profile from response to avoid circular reference
+	user.JukirProfile = nil
 	return user, nil
 }
