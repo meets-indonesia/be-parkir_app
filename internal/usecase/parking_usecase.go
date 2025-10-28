@@ -67,12 +67,6 @@ func (u *parkingUsecase) GetNearbyAreas(req *entities.NearbyAreasRequest) (*enti
 }
 
 func (u *parkingUsecase) Checkin(req *entities.CheckinRequest) (*entities.CheckinResponse, error) {
-	// Check if there's already an active session for this QR token
-	activeSession, err := u.sessionRepo.GetActiveByQRToken(req.QRToken)
-	if err == nil && activeSession != nil {
-		return nil, errors.New("there is already an active parking session for this QR code")
-	}
-
 	// Get jukir by QR token
 	jukir, err := u.jukirRepo.GetByQRToken(req.QRToken)
 	if err != nil {

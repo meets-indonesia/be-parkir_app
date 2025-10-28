@@ -1181,6 +1181,14 @@ func (u *adminUsecase) UpdateJukir(jukirID uint, req *entities.UpdateJukirReques
 		return nil, errors.New("jukir not found")
 	}
 
+	// Update name if provided
+	if req.Name != nil {
+		jukir.User.Name = *req.Name
+		if err := u.userRepo.Update(&jukir.User); err != nil {
+			return nil, errors.New("failed to update jukir name")
+		}
+	}
+
 	// Update fields if provided
 	if req.JukirCode != nil {
 		jukir.JukirCode = *req.JukirCode
@@ -1201,7 +1209,13 @@ func (u *adminUsecase) UpdateJukir(jukirID uint, req *entities.UpdateJukirReques
 		return nil, errors.New("failed to update jukir")
 	}
 
-	return jukir, nil
+	// Reload jukir with updated user data
+	updatedJukir, err := u.jukirRepo.GetByID(jukirID)
+	if err != nil {
+		return nil, errors.New("failed to reload jukir")
+	}
+
+	return updatedJukir, nil
 }
 
 func (u *adminUsecase) DeleteJukir(jukirID uint) error {

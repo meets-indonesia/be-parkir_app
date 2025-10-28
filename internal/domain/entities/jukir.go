@@ -38,6 +38,7 @@ type CreateJukirRequest struct {
 }
 
 type UpdateJukirRequest struct {
+	Name      *string      `json:"name,omitempty" validate:"omitempty,min=2,max=100"`
 	JukirCode *string      `json:"jukir_code,omitempty" validate:"omitempty,min=3,max=20"`
 	AreaID    *uint        `json:"area_id,omitempty" validate:"omitempty"`
 	Status    *JukirStatus `json:"status,omitempty" validate:"omitempty,oneof=active inactive pending"`
