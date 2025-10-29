@@ -2,6 +2,7 @@ package handler
 
 import (
 	"be-parkir/internal/domain/entities"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -9,6 +10,35 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 )
+
+// parseDateFilter parses start_date and end_date from query parameters (format: dd-mm-yyyy)
+func parseDateFilter(c *gin.Context) (*time.Time, *time.Time, error) {
+	startDateStr := c.Query("start_date")
+	endDateStr := c.Query("end_date")
+
+	if startDateStr == "" && endDateStr == "" {
+		return nil, nil, nil
+	}
+
+	if startDateStr == "" || endDateStr == "" {
+		return nil, nil, errors.New("both start_date and end_date are required")
+	}
+
+	startDate, err := time.Parse("02-01-2006", startDateStr)
+	if err != nil {
+		return nil, nil, errors.New("invalid start_date format. Use DD-MM-YYYY")
+	}
+
+	endDate, err := time.Parse("02-01-2006", endDateStr)
+	if err != nil {
+		return nil, nil, errors.New("invalid end_date format. Use DD-MM-YYYY")
+	}
+
+	// Set end date to end of day
+	endDate = time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 23, 59, 59, 999999999, endDate.Location())
+
+	return &startDate, &endDate, nil
+}
 
 // GetAdminOverview godoc
 // @Summary Get admin overview
@@ -18,26 +48,31 @@ import (
 // @Produce json
 // @Security BearerAuth
 // @Param vehicle_type query string false "Filter by vehicle type (mobil/motor)"
-// @Param date_range query string false "Filter by date range (hari_ini, minggu_ini, bulan_ini, tahun_ini)"
+// @Param start_date query string false "Start date (YYYY-MM-DD)"
+// @Param end_date query string false "End date (YYYY-MM-DD)"
 // @Success 200 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/admin/overview [get]
 func (h *Handlers) GetAdminOverview(c *gin.Context) {
 	vehicleType := c.Query("vehicle_type")
-	dateRange := c.Query("date_range")
 
 	var vehicleTypePtr *string
 	if vehicleType != "" && (vehicleType == "mobil" || vehicleType == "motor") {
 		vehicleTypePtr = &vehicleType
 	}
 
-	var dateRangePtr *string
-	if dateRange != "" && (dateRange == "hari_ini" || dateRange == "minggu_ini" || dateRange == "bulan_ini" || dateRange == "tahun_ini") {
-		dateRangePtr = &dateRange
+	// Parse start_date and end_date
+	startTime, endTime, err := parseDateFilter(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
 	}
 
-	response, err := h.AdminUC.GetOverview(vehicleTypePtr, dateRangePtr)
+	response, err := h.AdminUC.GetOverview(vehicleTypePtr, startTime, endTime)
 	if err != nil {
 		h.Logger.Error("Failed to get overview:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -53,7 +88,8 @@ func (h *Handlers) GetAdminOverview(c *gin.Context) {
 		"data":    response,
 		"filter": map[string]interface{}{
 			"vehicle_type": vehicleType,
-			"date_range":   dateRange,
+			"start_date":   c.Query("start_date"),
+			"end_date":     c.Query("end_date"),
 		},
 	})
 }
@@ -915,20 +951,32 @@ func (h *Handlers) DeleteParkingArea(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param date_range query string false "Filter by date range (hari_ini, minggu_ini, bulan_ini, tahun_ini)" default(hari_ini)
+// @Param start_date query string false "Start date (DD-MM-YYYY)"
+// @Param end_date query string false "End date (DD-MM-YYYY)"
+// @Param regional query string false "Filter by regional"
 // @Success 200 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/admin/jukirs/revenue [get]
 func (h *Handlers) GetAllJukirsRevenue(c *gin.Context) {
-	dateRange := c.Query("date_range")
+	regional := c.Query("regional")
 
-	var dateRangePtr *string
-	if dateRange != "" && (dateRange == "hari_ini" || dateRange == "minggu_ini" || dateRange == "bulan_ini" || dateRange == "tahun_ini") {
-		dateRangePtr = &dateRange
+	var regionalPtr *string
+	if regional != "" {
+		regionalPtr = &regional
 	}
 
-	response, err := h.AdminUC.GetAllJukirsRevenue(dateRangePtr)
+	// Parse start_date and end_date
+	startTime, endTime, err := parseDateFilter(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	response, err := h.AdminUC.GetAllJukirsRevenue(startTime, endTime, regionalPtr)
 	if err != nil {
 		h.Logger.Error("Failed to get jukirs revenue:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -1007,26 +1055,38 @@ func (h *Handlers) AddManualRevenue(c *gin.Context) {
 // @Produce json
 // @Security BearerAuth
 // @Param vehicle_type query string false "Filter by vehicle type (mobil/motor)"
-// @Param date_range query string false "Filter by date range (hari_ini, minggu_ini, bulan_ini)"
+// @Param start_date query string false "Start date (DD-MM-YYYY)"
+// @Param end_date query string false "End date (DD-MM-YYYY)"
+// @Param regional query string false "Filter by regional"
 // @Success 200 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/admin/statistics/vehicles [get]
 func (h *Handlers) GetVehicleStatistics(c *gin.Context) {
 	vehicleType := c.Query("vehicle_type")
-	dateRange := c.Query("date_range")
+	regional := c.Query("regional")
 
 	var vehicleTypePtr *string
 	if vehicleType != "" && (vehicleType == "mobil" || vehicleType == "motor") {
 		vehicleTypePtr = &vehicleType
 	}
 
-	var dateRangePtr *string
-	if dateRange != "" && (dateRange == "hari_ini" || dateRange == "minggu_ini" || dateRange == "bulan_ini") {
-		dateRangePtr = &dateRange
+	var regionalPtr *string
+	if regional != "" {
+		regionalPtr = &regional
 	}
 
-	response, err := h.AdminUC.GetVehicleStatistics(dateRangePtr, vehicleTypePtr)
+	// Parse start_date and end_date
+	startTime, endTime, err := parseDateFilter(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	response, err := h.AdminUC.GetVehicleStatistics(startTime, endTime, vehicleTypePtr, regionalPtr)
 	if err != nil {
 		h.Logger.Error("Failed to get vehicle statistics:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -1153,26 +1213,38 @@ func (h *Handlers) GetJukirsListWithRevenue(c *gin.Context) {
 // @Produce json
 // @Security BearerAuth
 // @Param vehicle_type query string false "Filter by vehicle type (mobil/motor)"
-// @Param date_range query string false "Filter by date range (minggu_ini, bulan_ini)"
+// @Param start_date query string false "Start date (DD-MM-YYYY)"
+// @Param end_date query string false "End date (DD-MM-YYYY)"
+// @Param regional query string false "Filter by regional"
 // @Success 200 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/admin/chart/data [get]
 func (h *Handlers) GetChartDataDetailed(c *gin.Context) {
 	vehicleType := c.Query("vehicle_type")
-	dateRange := c.Query("date_range")
+	regional := c.Query("regional")
 
 	var vehicleTypePtr *string
 	if vehicleType != "" && (vehicleType == "mobil" || vehicleType == "motor") {
 		vehicleTypePtr = &vehicleType
 	}
 
-	var dateRangePtr *string
-	if dateRange != "" && (dateRange == "minggu_ini" || dateRange == "bulan_ini") {
-		dateRangePtr = &dateRange
+	var regionalPtr *string
+	if regional != "" {
+		regionalPtr = &regional
 	}
 
-	response, err := h.AdminUC.GetChartDataDetailed(dateRangePtr, vehicleTypePtr)
+	// Parse start_date and end_date
+	startTime, endTime, err := parseDateFilter(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	response, err := h.AdminUC.GetChartDataDetailed(startTime, endTime, vehicleTypePtr, regionalPtr)
 	if err != nil {
 		h.Logger.Error("Failed to get chart data:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -1201,7 +1273,14 @@ func (h *Handlers) GetChartDataDetailed(c *gin.Context) {
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/admin/statistics/areas [get]
 func (h *Handlers) GetParkingAreaStatistics(c *gin.Context) {
-	response, err := h.AdminUC.GetParkingAreaStatistics()
+	regional := c.Query("regional")
+
+	var regionalPtr *string
+	if regional != "" {
+		regionalPtr = &regional
+	}
+
+	response, err := h.AdminUC.GetParkingAreaStatistics(regionalPtr)
 	if err != nil {
 		h.Logger.Error("Failed to get parking area statistics:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -1230,7 +1309,14 @@ func (h *Handlers) GetParkingAreaStatistics(c *gin.Context) {
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/admin/statistics/jukirs [get]
 func (h *Handlers) GetJukirStatistics(c *gin.Context) {
-	response, err := h.AdminUC.GetJukirStatistics()
+	regional := c.Query("regional")
+
+	var regionalPtr *string
+	if regional != "" {
+		regionalPtr = &regional
+	}
+
+	response, err := h.AdminUC.GetJukirStatistics(regionalPtr)
 	if err != nil {
 		h.Logger.Error("Failed to get jukir statistics:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{

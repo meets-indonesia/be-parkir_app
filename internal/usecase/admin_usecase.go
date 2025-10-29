@@ -13,18 +13,18 @@ import (
 )
 
 type AdminUsecase interface {
-	GetOverview(vehicleType *string, dateRange *string) (map[string]interface{}, error)
+	GetOverview(vehicleType *string, startTime, endTime *time.Time) (map[string]interface{}, error)
 	GetJukirs(limit, offset int) ([]entities.Jukir, int64, error)
 	GetJukirsWithRevenue(limit, offset int, vehicleType *string, dateRange *string) ([]map[string]interface{}, int64, error)
-	GetAllJukirsRevenue(dateRange *string) ([]entities.JukirRevenueResponse, error)
-	GetVehicleStatistics(dateRange *string, vehicleType *string) (map[string]interface{}, error)
+	GetVehicleStatistics(startTime, endTime *time.Time, vehicleType *string, regional *string) (map[string]interface{}, error)
 	GetTotalRevenue(dateRange *string, vehicleType *string) (map[string]interface{}, error)
 	GetJukirsListWithRevenue(dateRange *string, vehicleType *string, includeRevenue *bool, status *string) ([]map[string]interface{}, error)
 	GetAllJukirsListWithRevenue(dateRange *string) ([]map[string]interface{}, int64, error)
 	GetJukirByID(jukirID uint, dateRange *string) (map[string]interface{}, error)
-	GetChartDataDetailed(dateRange *string, vehicleType *string) ([]map[string]interface{}, error)
-	GetParkingAreaStatistics() (map[string]interface{}, error)
-	GetJukirStatistics() (map[string]interface{}, error)
+	GetChartDataDetailed(startTime, endTime *time.Time, vehicleType *string, regional *string) ([]map[string]interface{}, error)
+	GetParkingAreaStatistics(regional *string) (map[string]interface{}, error)
+	GetJukirStatistics(regional *string) (map[string]interface{}, error)
+	GetAllJukirsRevenue(startTime, endTime *time.Time, regional *string) ([]entities.JukirRevenueResponse, error)
 	AddManualRevenue(req *entities.JukirRevenueRequest) (*entities.JukirRevenueResponse, error)
 	GetParkingAreas() ([]map[string]interface{}, error)
 	GetParkingAreaDetail(areaID uint) (map[string]interface{}, error)
@@ -60,31 +60,57 @@ func NewAdminUsecase(userRepo repository.UserRepository, jukirRepo repository.Ju
 	}
 }
 
-// getDateRange calculates start and end times based on date range string
+// getDateRange is a temporary helper for methods that still use old date range format
 func getDateRange(dateRange string, now time.Time) (time.Time, time.Time) {
 	switch dateRange {
-	case "minggu_ini": // This week (Monday to Sunday)
-		weekday := int(now.Weekday()) - 1 // Monday = 0
+	case "minggu_ini":
+		weekday := int(now.Weekday()) - 1
 		if weekday < 0 {
-			weekday = 6 // Sunday
+			weekday = 6
 		}
 		start := time.Date(now.Year(), now.Month(), now.Day()-weekday, 0, 0, 0, 0, now.Location())
 		return start, now
-	case "bulan_ini": // This month
+	case "bulan_ini":
 		start := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
 		return start, now
-	case "tahun_ini": // This year
+	case "tahun_ini":
 		start := time.Date(now.Year(), 1, 1, 0, 0, 0, 0, now.Location())
 		return start, now
-	default: // "hari_ini" or empty - today
+	default:
 		start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 		end := start.Add(24 * time.Hour)
 		return start, end
 	}
 }
 
+// parseDateRange parses start_date and end_date strings, returns nil if both are empty
+func parseDateRange(startDateStr, endDateStr string) (*time.Time, *time.Time, error) {
+	if startDateStr == "" && endDateStr == "" {
+		return nil, nil, nil
+	}
+
+	if startDateStr == "" || endDateStr == "" {
+		return nil, nil, errors.New("both start_date and end_date are required")
+	}
+
+	startDate, err := time.Parse("2006-01-02", startDateStr)
+	if err != nil {
+		return nil, nil, errors.New("invalid start_date format. Use YYYY-MM-DD")
+	}
+
+	endDate, err := time.Parse("2006-01-02", endDateStr)
+	if err != nil {
+		return nil, nil, errors.New("invalid end_date format. Use YYYY-MM-DD")
+	}
+
+	// Set end date to end of day
+	endDate = time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 23, 59, 59, 999999999, endDate.Location())
+
+	return &startDate, &endDate, nil
+}
+
 // getPeriods returns array of period data based on date range with actual and estimated revenue
-func getPeriods(dateRange string, now time.Time, paymentRepo repository.PaymentRepository, sessionRepo repository.ParkingSessionRepository, areaRepo repository.ParkingAreaRepository) []map[string]interface{} {
+func getPeriods(dateRange string, now time.Time, paymentRepo repository.PaymentRepository, sessionRepo repository.ParkingSessionRepository, areaRepo repository.ParkingAreaRepository, regional *string) []map[string]interface{} {
 	switch dateRange {
 	case "bulan_ini": // Last 7 months
 		periods := make([]map[string]interface{}, 7)
@@ -96,7 +122,7 @@ func getPeriods(dateRange string, now time.Time, paymentRepo repository.PaymentR
 			end := start.AddDate(0, 1, 0).Add(-time.Second)
 
 			actualRevenue, _ := paymentRepo.GetRevenueByDateRange(start, end)
-			estimatedRevenue := calculateEstimatedRevenue(sessionRepo, areaRepo, start, end)
+			estimatedRevenue := calculateEstimatedRevenue(sessionRepo, areaRepo, start, end, regional)
 
 			periods[i] = map[string]interface{}{
 				"period":            months[period.Month()-1],
@@ -116,7 +142,7 @@ func getPeriods(dateRange string, now time.Time, paymentRepo repository.PaymentR
 			end := start.AddDate(0, 0, 7)
 
 			actualRevenue, _ := paymentRepo.GetRevenueByDateRange(start, end)
-			estimatedRevenue := calculateEstimatedRevenue(sessionRepo, areaRepo, start, end)
+			estimatedRevenue := calculateEstimatedRevenue(sessionRepo, areaRepo, start, end, regional)
 
 			periods[i] = map[string]interface{}{
 				"period":            fmt.Sprintf("Minggu %d", weeksAgo+1),
@@ -136,7 +162,7 @@ func getPeriods(dateRange string, now time.Time, paymentRepo repository.PaymentR
 			end := start.Add(24 * time.Hour)
 
 			actualRevenue, _ := paymentRepo.GetRevenueByDateRange(start, end)
-			estimatedRevenue := calculateEstimatedRevenue(sessionRepo, areaRepo, start, end)
+			estimatedRevenue := calculateEstimatedRevenue(sessionRepo, areaRepo, start, end, regional)
 
 			periods[i] = map[string]interface{}{
 				"period":            weekdays[day.Weekday()],
@@ -150,11 +176,16 @@ func getPeriods(dateRange string, now time.Time, paymentRepo repository.PaymentR
 }
 
 // calculateEstimatedRevenue calculates estimated revenue from active sessions
-func calculateEstimatedRevenue(sessionRepo repository.ParkingSessionRepository, areaRepo repository.ParkingAreaRepository, start, end time.Time) float64 {
+func calculateEstimatedRevenue(sessionRepo repository.ParkingSessionRepository, areaRepo repository.ParkingAreaRepository, start, end time.Time, regional *string) float64 {
 	areas, _ := areaRepo.GetActiveAreas()
 	estimatedRevenue := 0.0
 
 	for _, area := range areas {
+		// Filter by regional if specified
+		if regional != nil && *regional != "" && area.Regional != *regional {
+			continue
+		}
+
 		sessions, _ := sessionRepo.GetSessionsByArea(area.ID, start, end)
 		for _, session := range sessions {
 			if session.SessionStatus == entities.SessionStatusActive && session.CheckoutTime == nil {
@@ -171,15 +202,17 @@ func calculateEstimatedRevenue(sessionRepo repository.ParkingSessionRepository, 
 	return estimatedRevenue
 }
 
-func (u *adminUsecase) GetOverview(vehicleType *string, dateRange *string) (map[string]interface{}, error) {
-	// Determine date range
-	now := time.Now()
-	dateRangeStr := "hari_ini" // default
-	if dateRange != nil && *dateRange != "" {
-		dateRangeStr = *dateRange
+func (u *adminUsecase) GetOverview(vehicleType *string, startTime, endTime *time.Time) (map[string]interface{}, error) {
+	// Use provided time range or default to today
+	var actualStart, actualEnd time.Time
+	if startTime != nil && endTime != nil {
+		actualStart = *startTime
+		actualEnd = *endTime
+	} else {
+		now := time.Now()
+		actualStart = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		actualEnd = now
 	}
-
-	startTime, endTime := getDateRange(dateRangeStr, now)
 
 	// Get total users
 	totalUsers, _, err := u.userRepo.List(0, 0)
@@ -218,7 +251,7 @@ func (u *adminUsecase) GetOverview(vehicleType *string, dateRange *string) (map[
 
 	var sessions []entities.ParkingSession
 	for _, area := range allAreas {
-		areaSessions, err := u.sessionRepo.GetSessionsByArea(area.ID, startTime, endTime)
+		areaSessions, err := u.sessionRepo.GetSessionsByArea(area.ID, actualStart, actualEnd)
 		if err != nil {
 			continue
 		}
@@ -313,8 +346,9 @@ func (u *adminUsecase) GetOverview(vehicleType *string, dateRange *string) (map[
 		}
 	}
 
-	// Get chart data based on date range
-	chartData := getPeriods(dateRangeStr, now, u.paymentRepo, u.sessionRepo, u.areaRepo)
+	// Get chart data based on date range - using default minggu_ini for chart
+	now := time.Now()
+	chartData := getPeriods("minggu_ini", now, u.paymentRepo, u.sessionRepo, u.areaRepo, nil)
 
 	return map[string]interface{}{
 		"total_users":    len(totalUsers),
@@ -547,27 +581,33 @@ func min(a, b int) int {
 	return b
 }
 
-func (u *adminUsecase) GetAllJukirsRevenue(dateRange *string) ([]entities.JukirRevenueResponse, error) {
+func (u *adminUsecase) GetAllJukirsRevenue(startTime, endTime *time.Time, regional *string) ([]entities.JukirRevenueResponse, error) {
 	// Get all jukirs
 	jukirs, _, err := u.jukirRepo.List(1000, 0)
 	if err != nil {
 		return nil, errors.New("failed to get jukirs")
 	}
 
-	// Determine date range
-	now := time.Now()
-	dateRangeStr := "hari_ini" // default
-	if dateRange != nil && *dateRange != "" {
-		dateRangeStr = *dateRange
+	// Use provided time range or default to today
+	var actualStart, actualEnd time.Time
+	if startTime != nil && endTime != nil {
+		actualStart = *startTime
+		actualEnd = *endTime
+	} else {
+		now := time.Now()
+		actualStart = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		actualEnd = now
 	}
-
-	startTime, endTime := getDateRange(dateRangeStr, now)
 
 	result := []entities.JukirRevenueResponse{}
 
 	for _, jukir := range jukirs {
+		// Filter by regional if specified
+		if regional != nil && *regional != "" && jukir.Area.Regional != *regional {
+			continue
+		}
 		// Get sessions for this jukir within date range
-		allSessions, err := u.sessionRepo.GetSessionsByArea(jukir.AreaID, startTime, endTime)
+		allSessions, err := u.sessionRepo.GetSessionsByArea(jukir.AreaID, actualStart, actualEnd)
 		if err != nil {
 			continue
 		}
@@ -594,21 +634,24 @@ func (u *adminUsecase) GetAllJukirsRevenue(dateRange *string) ([]entities.JukirR
 			ActualRevenue:    totalRevenue,
 			EstimatedRevenue: totalRevenue,
 			TotalRevenue:     totalRevenue,
-			Date:             startTime.Format("2006-01-02"),
+			Date:             actualStart.Format("2006-01-02"),
 		})
 	}
 
 	return result, nil
 }
 
-func (u *adminUsecase) GetVehicleStatistics(dateRange *string, vehicleType *string) (map[string]interface{}, error) {
-	now := time.Now()
-	dateRangeStr := "hari_ini"
-	if dateRange != nil && *dateRange != "" {
-		dateRangeStr = *dateRange
+func (u *adminUsecase) GetVehicleStatistics(startTime, endTime *time.Time, vehicleType *string, regional *string) (map[string]interface{}, error) {
+	// Use provided time range or default to today
+	var actualStart, actualEnd time.Time
+	if startTime != nil && endTime != nil {
+		actualStart = *startTime
+		actualEnd = *endTime
+	} else {
+		now := time.Now()
+		actualStart = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		actualEnd = now
 	}
-
-	startTime, endTime := getDateRange(dateRangeStr, now)
 
 	allAreas, err := u.areaRepo.GetActiveAreas()
 	if err != nil {
@@ -617,7 +660,11 @@ func (u *adminUsecase) GetVehicleStatistics(dateRange *string, vehicleType *stri
 
 	var sessions []entities.ParkingSession
 	for _, area := range allAreas {
-		areaSessions, err := u.sessionRepo.GetSessionsByArea(area.ID, startTime, endTime)
+		// Filter by regional if specified
+		if regional != nil && *regional != "" && area.Regional != *regional {
+			continue
+		}
+		areaSessions, err := u.sessionRepo.GetSessionsByArea(area.ID, actualStart, actualEnd)
 		if err != nil {
 			continue
 		}
@@ -674,7 +721,6 @@ func (u *adminUsecase) GetVehicleStatistics(dateRange *string, vehicleType *stri
 				"out": vehiclesOutMotor,
 			},
 		},
-		"date_range": dateRangeStr,
 	}, nil
 }
 
@@ -968,33 +1014,54 @@ func (u *adminUsecase) GetJukirByID(jukirID uint, dateRange *string) (map[string
 	return response, nil
 }
 
-func (u *adminUsecase) GetChartDataDetailed(dateRange *string, vehicleType *string) ([]map[string]interface{}, error) {
+func (u *adminUsecase) GetChartDataDetailed(startTime, endTime *time.Time, vehicleType *string, regional *string) ([]map[string]interface{}, error) {
+	// Use provided time range or default to this week
+	var actualStart, actualEnd time.Time
+	if startTime != nil && endTime != nil {
+		actualStart = *startTime
+		actualEnd = *endTime
+	} else {
+		now := time.Now()
+		// Default to this week (Monday to Sunday)
+		weekday := int(now.Weekday()) - 1
+		if weekday < 0 {
+			weekday = 6
+		}
+		actualStart = time.Date(now.Year(), now.Month(), now.Day()-weekday, 0, 0, 0, 0, now.Location())
+		actualEnd = now
+	}
+
+	// Calculate duration in days to determine chart period
+	duration := actualEnd.Sub(actualStart)
+	days := int(duration.Hours() / 24)
+
+	// Determine chart period based on date range duration
+	var chartPeriod string
+	if days <= 7 {
+		chartPeriod = "minggu_ini" // Show daily data for week view
+	} else if days <= 30 {
+		chartPeriod = "minggu_ini" // Show daily data
+	} else {
+		chartPeriod = "bulan_ini" // Show monthly data
+	}
+
 	now := time.Now()
-	dateRangeStr := "minggu_ini" // Default untuk chart
-	if dateRange != nil && *dateRange != "" {
-		dateRangeStr = *dateRange
-	}
+	// Get chart data with regional filter
+	chartData := getPeriods(chartPeriod, now, u.paymentRepo, u.sessionRepo, u.areaRepo, regional)
 
-	// Only allow minggu_ini or bulan_ini for chart
-	if dateRangeStr != "minggu_ini" && dateRangeStr != "bulan_ini" {
-		dateRangeStr = "minggu_ini"
-	}
-
-	// Get chart data
-	chartData := getPeriods(dateRangeStr, now, u.paymentRepo, u.sessionRepo, u.areaRepo)
-
-	// Calculate summary for minggu_ini
-	mingguStart, mingguEnd := getDateRange("minggu_ini", now)
-	mingguActual, _ := u.paymentRepo.GetRevenueByDateRange(mingguStart, mingguEnd)
-	mingguEstimated := calculateEstimatedRevenue(u.sessionRepo, u.areaRepo, mingguStart, mingguEnd)
+	// Calculate summary for the period
+	mingguActual, _ := u.paymentRepo.GetRevenueByDateRange(actualStart, actualEnd)
+	mingguEstimated := calculateEstimatedRevenue(u.sessionRepo, u.areaRepo, actualStart, actualEnd, regional)
 
 	// Add summary to first item or create new structure
 	result := []map[string]interface{}{
 		{
 			"summary": map[string]interface{}{
-				"minggu_ini": map[string]interface{}{
+				"period": map[string]interface{}{
 					"actual_revenue":    mingguActual,
 					"estimated_revenue": mingguEstimated,
+					"start_date":        actualStart.Format("2006-01-02"),
+					"end_date":          actualEnd.Format("2006-01-02"),
 				},
 			},
 			"chart_data": chartData,
@@ -1004,19 +1071,26 @@ func (u *adminUsecase) GetChartDataDetailed(dateRange *string, vehicleType *stri
 	return result, nil
 }
 
-func (u *adminUsecase) GetParkingAreaStatistics() (map[string]interface{}, error) {
+func (u *adminUsecase) GetParkingAreaStatistics(regional *string) (map[string]interface{}, error) {
 	// Get all areas
 	areas, _, err := u.areaRepo.List(1000, 0)
 	if err != nil {
 		return nil, errors.New("failed to get parking areas")
 	}
 
-	// Count by status
+	// Count by status with regional filter
 	activeCount := 0
 	inactiveCount := 0
 	maintenanceCount := 0
+	totalCount := 0
 
 	for _, area := range areas {
+		// Filter by regional if specified
+		if regional != nil && *regional != "" && area.Regional != *regional {
+			continue
+		}
+
+		totalCount++
 		switch area.Status {
 		case entities.AreaStatusActive:
 			activeCount++
@@ -1028,25 +1102,30 @@ func (u *adminUsecase) GetParkingAreaStatistics() (map[string]interface{}, error
 	}
 
 	return map[string]interface{}{
-		"total":       len(areas),
+		"total":       totalCount,
 		"active":      activeCount,
 		"inactive":    inactiveCount,
 		"maintenance": maintenanceCount,
 	}, nil
 }
 
-func (u *adminUsecase) GetJukirStatistics() (map[string]interface{}, error) {
+func (u *adminUsecase) GetJukirStatistics(regional *string) (map[string]interface{}, error) {
 	// Get all jukirs
 	jukirs, _, err := u.jukirRepo.List(1000, 0)
 	if err != nil {
 		return nil, errors.New("failed to get jukirs")
 	}
 
-	// Count by status
+	// Count by status with regional filter
 	activeCount := 0
 	inactiveCount := 0
 
 	for _, jukir := range jukirs {
+		// Filter by regional if specified
+		if regional != nil && *regional != "" && jukir.Area.Regional != *regional {
+			continue
+		}
+
 		switch jukir.Status {
 		case entities.JukirStatusActive:
 			activeCount++
@@ -1055,8 +1134,11 @@ func (u *adminUsecase) GetJukirStatistics() (map[string]interface{}, error) {
 		}
 	}
 
+	// Calculate total after filter
+	total := activeCount + inactiveCount
+
 	return map[string]interface{}{
-		"total":    len(jukirs),
+		"total":    total,
 		"active":   activeCount,
 		"inactive": inactiveCount,
 	}, nil
