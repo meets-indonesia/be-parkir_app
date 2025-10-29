@@ -13,6 +13,7 @@ type Config struct {
 	Database DatabaseConfig
 	Redis    RedisConfig
 	JWT      JWTConfig
+	MinIO    MinIOConfig
 }
 
 type ServerConfig struct {
@@ -44,6 +45,14 @@ type JWTConfig struct {
 	RefreshExpiry time.Duration
 }
 
+type MinIOConfig struct {
+	Endpoint  string
+	AccessKey string
+	SecretKey string
+	Bucket    string
+	UseSSL    bool
+}
+
 func Load() (*Config, error) {
 	viper.SetConfigName(".env")
 	viper.SetConfigType("env")
@@ -73,6 +82,12 @@ func Load() (*Config, error) {
 	viper.SetDefault("API_KEY_HEADER", "X-API-Key")
 	viper.SetDefault("CORS_ALLOW_CREDENTIALS", "true")
 	viper.SetDefault("CORS_MAX_AGE", "86400")
+	// MinIO defaults
+	viper.SetDefault("MINIO_ENDPOINT", "localhost:9000")
+	viper.SetDefault("MINIO_ACCESS_KEY", "miniokey")
+	viper.SetDefault("MINIO_SECRET_KEY", "miniosecret")
+	viper.SetDefault("MINIO_BUCKET", "be-parkir")
+	viper.SetDefault("MINIO_USE_SSL", false)
 
 	// Enable reading from environment variables
 	viper.AutomaticEnv()
@@ -117,6 +132,13 @@ func Load() (*Config, error) {
 			SecretKey:     viper.GetString("JWT_SECRET"),
 			AccessExpiry:  viper.GetDuration("JWT_ACCESS_EXPIRY"),
 			RefreshExpiry: viper.GetDuration("JWT_REFRESH_EXPIRY"),
+		},
+		MinIO: MinIOConfig{
+			Endpoint:  viper.GetString("MINIO_ENDPOINT"),
+			AccessKey: viper.GetString("MINIO_ACCESS_KEY"),
+			SecretKey: viper.GetString("MINIO_SECRET_KEY"),
+			Bucket:    viper.GetString("MINIO_BUCKET"),
+			UseSSL:    viper.GetBool("MINIO_USE_SSL"),
 		},
 	}
 

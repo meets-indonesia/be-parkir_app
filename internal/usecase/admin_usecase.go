@@ -3,21 +3,24 @@ package usecase
 import (
 	"be-parkir/internal/domain/entities"
 	"be-parkir/internal/repository"
+	"bytes"
 	"errors"
 	"fmt"
 	"math/rand"
 	"strings"
 	"time"
 
+	"github.com/xuri/excelize/v2"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type AdminUsecase interface {
 	GetOverview(vehicleType *string, startTime, endTime *time.Time) (map[string]interface{}, error)
-	GetJukirs(limit, offset int) ([]entities.Jukir, int64, error)
+	GetJukirs(limit, offset int, regional *string) ([]entities.Jukir, int64, error)
 	GetJukirsWithRevenue(limit, offset int, vehicleType *string, dateRange *string) ([]map[string]interface{}, int64, error)
 	GetVehicleStatistics(startTime, endTime *time.Time, vehicleType *string, regional *string) (map[string]interface{}, error)
-	GetTotalRevenue(dateRange *string, vehicleType *string) (map[string]interface{}, error)
+	GetTotalRevenue(startTime, endTime *time.Time, vehicleType *string, regional *string) (map[string]interface{}, error)
+	ExportRevenueReport(startTime, endTime *time.Time, regional *string) (*bytes.Buffer, error)
 	GetJukirsListWithRevenue(dateRange *string, vehicleType *string, includeRevenue *bool, status *string) ([]map[string]interface{}, error)
 	GetAllJukirsListWithRevenue(dateRange *string) ([]map[string]interface{}, int64, error)
 	GetJukirByID(jukirID uint, dateRange *string) (map[string]interface{}, error)
@@ -30,7 +33,7 @@ type AdminUsecase interface {
 	GetParkingAreaDetail(areaID uint) (map[string]interface{}, error)
 	GetParkingAreaStatus(areaID uint) (map[string]interface{}, error)
 	GetAreaTransactions(areaID uint, limit, offset int) ([]map[string]interface{}, int64, error)
-	GetRevenueTable(limit, offset int, areaID *uint) ([]map[string]interface{}, int64, error)
+	GetRevenueTable(limit, offset int, areaID *uint, startTime, endTime *time.Time, regional *string) ([]map[string]interface{}, int64, error)
 	CreateJukir(req *entities.CreateJukirRequest) (*entities.CreateJukirResponse, error)
 	UpdateJukirStatus(jukirID uint, req *entities.UpdateJukirRequest) (*entities.Jukir, error)
 	UpdateJukir(jukirID uint, req *entities.UpdateJukirRequest) (*entities.Jukir, error)
@@ -40,6 +43,14 @@ type AdminUsecase interface {
 	CreateParkingArea(req *entities.CreateParkingAreaRequest) (*entities.ParkingArea, error)
 	UpdateParkingArea(areaID uint, req *entities.UpdateParkingAreaRequest) (*entities.ParkingArea, error)
 	DeleteParkingArea(areaID uint) error
+	GetAreaActivity(startTime, endTime *time.Time, areaID *uint, regional *string) (map[string]interface{}, error)
+	GetAreaActivityDetail(areaID uint, startTime, endTime *time.Time) (map[string]interface{}, error)
+	GetJukirActivity(startTime, endTime *time.Time, jukirID *uint, regional *string) (map[string]interface{}, error)
+	GetJukirActivityDetail(jukirID uint, startTime, endTime *time.Time) (map[string]interface{}, error)
+	ExportAreaActivityCSV(startTime, endTime *time.Time, areaID *uint, regional *string) (*bytes.Buffer, error)
+	ExportJukirActivityCSV(startTime, endTime *time.Time, jukirID *uint, regional *string) (*bytes.Buffer, error)
+	ExportAreaActivityDetailXLSX(areaID uint, startTime, endTime *time.Time) (*bytes.Buffer, error)
+	ExportJukirActivityDetailXLSX(jukirID uint, startTime, endTime *time.Time) (*bytes.Buffer, error)
 }
 
 type adminUsecase struct {
@@ -379,12 +390,35 @@ func (u *adminUsecase) GetOverview(vehicleType *string, startTime, endTime *time
 	}, nil
 }
 
-func (u *adminUsecase) GetJukirs(limit, offset int) ([]entities.Jukir, int64, error) {
-	jukirs, count, err := u.jukirRepo.List(limit, offset)
+func (u *adminUsecase) GetJukirs(limit, offset int, regional *string) ([]entities.Jukir, int64, error) {
+	jukirs, count, err := u.jukirRepo.List(1000, 0) // Get all to filter by regional
 	if err != nil {
 		return nil, 0, errors.New("failed to get jukirs")
 	}
-	return jukirs, count, nil
+
+	// Filter by regional if specified
+	if regional != nil && *regional != "" {
+		filteredJukirs := []entities.Jukir{}
+		for _, jukir := range jukirs {
+			if jukir.Area.Regional == *regional {
+				filteredJukirs = append(filteredJukirs, jukir)
+			}
+		}
+		jukirs = filteredJukirs
+		count = int64(len(filteredJukirs))
+	}
+
+	// Apply pagination
+	start := offset
+	end := offset + limit
+	if end > len(jukirs) {
+		end = len(jukirs)
+	}
+	if start > len(jukirs) {
+		return []entities.Jukir{}, count, nil
+	}
+
+	return jukirs[start:end], count, nil
 }
 
 // GetJukirsWithRevenue returns jukirs with their revenue
@@ -724,14 +758,17 @@ func (u *adminUsecase) GetVehicleStatistics(startTime, endTime *time.Time, vehic
 	}, nil
 }
 
-func (u *adminUsecase) GetTotalRevenue(dateRange *string, vehicleType *string) (map[string]interface{}, error) {
-	now := time.Now()
-	dateRangeStr := "hari_ini"
-	if dateRange != nil && *dateRange != "" {
-		dateRangeStr = *dateRange
+func (u *adminUsecase) GetTotalRevenue(startTime, endTime *time.Time, vehicleType *string, regional *string) (map[string]interface{}, error) {
+	// Use provided time range or default to today
+	var actualStart, actualEnd time.Time
+	if startTime != nil && endTime != nil {
+		actualStart = *startTime
+		actualEnd = *endTime
+	} else {
+		now := time.Now()
+		actualStart = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		actualEnd = now
 	}
-
-	startTime, endTime := getDateRange(dateRangeStr, now)
 
 	allAreas, err := u.areaRepo.GetActiveAreas()
 	if err != nil {
@@ -740,7 +777,12 @@ func (u *adminUsecase) GetTotalRevenue(dateRange *string, vehicleType *string) (
 
 	var sessions []entities.ParkingSession
 	for _, area := range allAreas {
-		areaSessions, err := u.sessionRepo.GetSessionsByArea(area.ID, startTime, endTime)
+		// Filter by regional if specified
+		if regional != nil && *regional != "" && area.Regional != *regional {
+			continue
+		}
+
+		areaSessions, err := u.sessionRepo.GetSessionsByArea(area.ID, actualStart, actualEnd)
 		if err != nil {
 			continue
 		}
@@ -786,7 +828,6 @@ func (u *adminUsecase) GetTotalRevenue(dateRange *string, vehicleType *string) (
 		"actual_revenue":    actualRevenue,
 		"estimated_revenue": estimatedRevenue,
 		"total_revenue":     actualRevenue + estimatedRevenue,
-		"date_range":        dateRangeStr,
 	}, nil
 }
 
@@ -1035,31 +1076,31 @@ func (u *adminUsecase) GetChartDataDetailed(startTime, endTime *time.Time, vehic
 	duration := actualEnd.Sub(actualStart)
 	days := int(duration.Hours() / 24)
 
-	// Determine chart period based on date range duration
-	var chartPeriod string
-	if days <= 7 {
-		chartPeriod = "minggu_ini" // Show daily data for week view
-	} else if days <= 30 {
-		chartPeriod = "minggu_ini" // Show daily data
+	// Generate chart data based on actual date range selected by user
+	var chartData []map[string]interface{}
+
+	if days <= 30 {
+		// Daily breakdown for up to 30 days
+		chartData = u.generateDailyChartData(actualStart, actualEnd, regional)
+	} else if days <= 90 {
+		// Weekly breakdown for 31-90 days
+		chartData = u.generateWeeklyChartData(actualStart, actualEnd, regional)
 	} else {
-		chartPeriod = "bulan_ini" // Show monthly data
+		// Monthly breakdown for more than 90 days
+		chartData = u.generateMonthlyChartData(actualStart, actualEnd, regional)
 	}
 
-	now := time.Now()
-	// Get chart data with regional filter
-	chartData := getPeriods(chartPeriod, now, u.paymentRepo, u.sessionRepo, u.areaRepo, regional)
-
 	// Calculate summary for the period
-	mingguActual, _ := u.paymentRepo.GetRevenueByDateRange(actualStart, actualEnd)
-	mingguEstimated := calculateEstimatedRevenue(u.sessionRepo, u.areaRepo, actualStart, actualEnd, regional)
+	actualRevenue, _ := u.paymentRepo.GetRevenueByDateRange(actualStart, actualEnd)
+	estimatedRevenue := calculateEstimatedRevenue(u.sessionRepo, u.areaRepo, actualStart, actualEnd, regional)
 
 	// Add summary to first item or create new structure
 	result := []map[string]interface{}{
 		{
 			"summary": map[string]interface{}{
 				"period": map[string]interface{}{
-					"actual_revenue":    mingguActual,
-					"estimated_revenue": mingguEstimated,
+					"actual_revenue":    actualRevenue,
+					"estimated_revenue": estimatedRevenue,
 					"start_date":        actualStart.Format("2006-01-02"),
 					"end_date":          actualEnd.Format("2006-01-02"),
 				},
@@ -1596,6 +1637,7 @@ func (u *adminUsecase) GetParkingAreaDetail(areaID uint) (map[string]interface{}
 		"latitude":           area.Latitude,
 		"longitude":          area.Longitude,
 		"regional":           area.Regional,
+		"image":              area.Image,
 		"hourly_rate":        area.HourlyRate,
 		"status":             area.Status,
 		"max_mobil":          area.MaxMobil,
@@ -1791,7 +1833,7 @@ func (u *adminUsecase) GetAreaTransactions(areaID uint, limit, offset int) ([]ma
 	return result[start:end], count, nil
 }
 
-func (u *adminUsecase) GetRevenueTable(limit, offset int, areaID *uint) ([]map[string]interface{}, int64, error) {
+func (u *adminUsecase) GetRevenueTable(limit, offset int, areaID *uint, startTime, endTime *time.Time, regional *string) ([]map[string]interface{}, int64, error) {
 	// This will return revenue data for the monitor-pendapatan page
 	// Get all active areas or specific area
 	var areas []entities.ParkingArea
@@ -1809,15 +1851,27 @@ func (u *adminUsecase) GetRevenueTable(limit, offset int, areaID *uint) ([]map[s
 		areas = activeAreas
 	}
 
-	// Get today's date range
-	now := time.Now()
-	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	// Use provided time range or default to today
+	var actualStart, actualEnd time.Time
+	if startTime != nil && endTime != nil {
+		actualStart = *startTime
+		actualEnd = *endTime
+	} else {
+		now := time.Now()
+		actualStart = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		actualEnd = now
+	}
 
 	// Build revenue table
 	revenueTable := []map[string]interface{}{}
 
 	for _, area := range areas {
-		sessions, err := u.sessionRepo.GetSessionsByArea(area.ID, startOfDay, now)
+		// Filter by regional if specified
+		if regional != nil && *regional != "" && area.Regional != *regional {
+			continue
+		}
+
+		sessions, err := u.sessionRepo.GetSessionsByArea(area.ID, actualStart, actualEnd)
 		if err != nil {
 			continue
 		}
@@ -2009,4 +2063,1330 @@ func (u *adminUsecase) GetAllJukirsListWithRevenue(dateRange *string) ([]map[str
 	}
 
 	return result, count, nil
+}
+
+// generateDailyChartData generates daily breakdown chart data
+func (u *adminUsecase) generateDailyChartData(start, end time.Time, regional *string) []map[string]interface{} {
+	var periods []map[string]interface{}
+	weekdays := []string{"Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"}
+
+	// Iterate through each day in the range
+	for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
+		dayStart := time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, d.Location())
+		dayEnd := dayStart.Add(24 * time.Hour)
+
+		// Don't exceed the end date
+		if dayEnd.After(end) {
+			dayEnd = end
+		}
+
+		actualRevenue, _ := u.paymentRepo.GetRevenueByDateRange(dayStart, dayEnd)
+		estimatedRevenue := calculateEstimatedRevenue(u.sessionRepo, u.areaRepo, dayStart, dayEnd, regional)
+
+		periods = append(periods, map[string]interface{}{
+			"period":            weekdays[d.Weekday()],
+			"date":              d.Format("2006-01-02"),
+			"actual_revenue":    actualRevenue,
+			"estimated_revenue": estimatedRevenue,
+		})
+	}
+
+	return periods
+}
+
+// generateWeeklyChartData generates weekly breakdown chart data
+func (u *adminUsecase) generateWeeklyChartData(start, end time.Time, regional *string) []map[string]interface{} {
+	var periods []map[string]interface{}
+
+	current := start
+	weekNum := 1
+
+	for !current.After(end) {
+		// Get start of current week (Monday)
+		weekday := int(current.Weekday())
+		if weekday == 0 {
+			weekday = 7 // Sunday becomes 7
+		}
+		daysToMonday := weekday - 1
+		weekStart := time.Date(current.Year(), current.Month(), current.Day(), 0, 0, 0, 0, current.Location()).AddDate(0, 0, -daysToMonday)
+
+		// Calculate end of week (Sunday)
+		weekEnd := weekStart.AddDate(0, 0, 7)
+
+		// Don't exceed the end date
+		if weekEnd.After(end) {
+			weekEnd = end
+		}
+
+		// Only proceed if weekStart is within or before the range
+		if !weekStart.After(end) {
+			actualRevenue, _ := u.paymentRepo.GetRevenueByDateRange(weekStart, weekEnd)
+			estimatedRevenue := calculateEstimatedRevenue(u.sessionRepo, u.areaRepo, weekStart, weekEnd, regional)
+
+			periods = append(periods, map[string]interface{}{
+				"period":            fmt.Sprintf("Minggu %d", weekNum),
+				"date":              weekStart.Format("2006-01-02"),
+				"actual_revenue":    actualRevenue,
+				"estimated_revenue": estimatedRevenue,
+			})
+		}
+
+		// Move to next week
+		current = weekEnd.AddDate(0, 0, 1)
+		weekNum++
+	}
+
+	return periods
+}
+
+// generateMonthlyChartData generates monthly breakdown chart data
+func (u *adminUsecase) generateMonthlyChartData(start, end time.Time, regional *string) []map[string]interface{} {
+	var periods []map[string]interface{}
+	monthNames := []string{"Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"}
+
+	current := start
+
+	for !current.After(end) {
+		// Get the start of the month
+		monthStart := time.Date(current.Year(), current.Month(), 1, 0, 0, 0, 0, current.Location())
+
+		// Get the end of the month
+		monthEnd := monthStart.AddDate(0, 1, 0).Add(-time.Nanosecond)
+
+		// Adjust monthStart if it's before our start range
+		if monthStart.Before(start) {
+			monthStart = start
+		}
+
+		// Don't exceed the end date
+		if monthEnd.After(end) {
+			monthEnd = end
+		}
+
+		actualRevenue, _ := u.paymentRepo.GetRevenueByDateRange(monthStart, monthEnd)
+		estimatedRevenue := calculateEstimatedRevenue(u.sessionRepo, u.areaRepo, monthStart, monthEnd, regional)
+
+		periods = append(periods, map[string]interface{}{
+			"period":            monthNames[current.Month()-1],
+			"date":              current.Format("2006-01"),
+			"actual_revenue":    actualRevenue,
+			"estimated_revenue": estimatedRevenue,
+		})
+
+		// Move to next month
+		current = monthStart.AddDate(0, 1, 0)
+	}
+
+	return periods
+}
+
+// ExportRevenueReport exports revenue report to Excel
+func (u *adminUsecase) ExportRevenueReport(startTime, endTime *time.Time, regional *string) (*bytes.Buffer, error) {
+	// Use provided time range or default to today
+	var actualStart, actualEnd time.Time
+	if startTime != nil && endTime != nil {
+		actualStart = *startTime
+		actualEnd = *endTime
+	} else {
+		now := time.Now()
+		actualStart = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		actualEnd = now
+	}
+
+	// Create new Excel file
+	f := excelize.NewFile()
+	defer func() {
+		if err := f.Close(); err != nil {
+			fmt.Println(err)
+		}
+	}()
+
+	// Sheet 1: Revenue by Jukir
+	sheet1 := "Revenue by Jukir"
+	index1, err := f.NewSheet(sheet1)
+	if err != nil {
+		return nil, errors.New("failed to create sheet")
+	}
+	f.SetActiveSheet(index1)
+
+	// Set headers for Jukir revenue
+	headersJukir := []string{"No", "Jukir Name", "Area", "Regional", "Actual Revenue", "Estimated Revenue", "Total Revenue"}
+	for i, header := range headersJukir {
+		cell := fmt.Sprintf("%c1", 'A'+i)
+		f.SetCellValue(sheet1, cell, header)
+	}
+
+	// Get all jukirs
+	jukirs, _, err := u.jukirRepo.List(1000, 0)
+	if err != nil {
+		return nil, errors.New("failed to get jukirs")
+	}
+
+	row := 2
+	for _, jukir := range jukirs {
+		// Filter by regional if specified
+		if regional != nil && *regional != "" && jukir.Area.Regional != *regional {
+			continue
+		}
+
+		// Get sessions for this jukir within date range
+		allSessions, err := u.sessionRepo.GetSessionsByArea(jukir.AreaID, actualStart, actualEnd)
+		if err != nil {
+			continue
+		}
+
+		// Filter by jukir ID
+		var jukirSessions []entities.ParkingSession
+		for _, session := range allSessions {
+			if session.JukirID != nil && *session.JukirID == jukir.ID {
+				jukirSessions = append(jukirSessions, session)
+			}
+		}
+
+		// Calculate revenue
+		actualRevenue := 0.0
+		estimatedRevenue := 0.0
+
+		areaMap := make(map[uint]entities.ParkingArea)
+		area, _ := u.areaRepo.GetByID(jukir.AreaID)
+		areaMap[jukir.AreaID] = *area
+
+		for _, session := range jukirSessions {
+			if session.PaymentStatus == entities.PaymentStatusPaid && session.TotalCost != nil {
+				actualRevenue += *session.TotalCost
+			}
+
+			if session.SessionStatus == entities.SessionStatusActive && session.CheckoutTime == nil {
+				area := areaMap[session.AreaID]
+				minutes := int(time.Since(session.CheckinTime).Minutes())
+				hours := float64(minutes) / 60.0
+				estimatedRevenue += area.HourlyRate * hours
+			} else if session.SessionStatus == entities.SessionStatusPendingPayment && session.TotalCost != nil {
+				estimatedRevenue += *session.TotalCost
+			}
+		}
+
+		f.SetCellValue(sheet1, fmt.Sprintf("A%d", row), row-1)
+		f.SetCellValue(sheet1, fmt.Sprintf("B%d", row), jukir.User.Name)
+		f.SetCellValue(sheet1, fmt.Sprintf("C%d", row), jukir.Area.Name)
+		f.SetCellValue(sheet1, fmt.Sprintf("D%d", row), jukir.Area.Regional)
+		f.SetCellValue(sheet1, fmt.Sprintf("E%d", row), actualRevenue)
+		f.SetCellValue(sheet1, fmt.Sprintf("F%d", row), estimatedRevenue)
+		f.SetCellValue(sheet1, fmt.Sprintf("G%d", row), actualRevenue+estimatedRevenue)
+		row++
+	}
+
+	// Sheet 2: Revenue by Area
+	sheet2 := "Revenue by Area"
+	_, err = f.NewSheet(sheet2)
+	if err != nil {
+		return nil, errors.New("failed to create sheet")
+	}
+
+	// Set headers for Area revenue
+	headersArea := []string{"No", "Area Name", "Regional", "Total Sessions", "Completed Sessions", "Actual Revenue", "Total Revenue"}
+	for i, header := range headersArea {
+		cell := fmt.Sprintf("%c1", 'A'+i)
+		f.SetCellValue(sheet2, cell, header)
+	}
+
+	// Get all areas
+	areas, _, err := u.areaRepo.List(1000, 0)
+	if err != nil {
+		return nil, errors.New("failed to get areas")
+	}
+
+	rowArea := 2
+	for _, area := range areas {
+		// Filter by regional if specified
+		if regional != nil && *regional != "" && area.Regional != *regional {
+			continue
+		}
+
+		// Get sessions for this area within date range
+		sessions, err := u.sessionRepo.GetSessionsByArea(area.ID, actualStart, actualEnd)
+		if err != nil {
+			continue
+		}
+
+		// Calculate metrics
+		totalSessions := len(sessions)
+		completedSessions := 0
+		actualRevenue := 0.0
+
+		for _, session := range sessions {
+			if session.CheckoutTime != nil {
+				completedSessions++
+			}
+			if session.PaymentStatus == entities.PaymentStatusPaid && session.TotalCost != nil {
+				actualRevenue += *session.TotalCost
+			}
+		}
+
+		f.SetCellValue(sheet2, fmt.Sprintf("A%d", rowArea), rowArea-1)
+		f.SetCellValue(sheet2, fmt.Sprintf("B%d", rowArea), area.Name)
+		f.SetCellValue(sheet2, fmt.Sprintf("C%d", rowArea), area.Regional)
+		f.SetCellValue(sheet2, fmt.Sprintf("D%d", rowArea), totalSessions)
+		f.SetCellValue(sheet2, fmt.Sprintf("E%d", rowArea), completedSessions)
+		f.SetCellValue(sheet2, fmt.Sprintf("F%d", rowArea), actualRevenue)
+		f.SetCellValue(sheet2, fmt.Sprintf("G%d", rowArea), actualRevenue)
+		rowArea++
+	}
+
+	// Delete default Sheet1
+	f.DeleteSheet("Sheet1")
+
+	// Set first sheet as active
+	f.SetActiveSheet(index1)
+
+	// Write to buffer
+	var buf bytes.Buffer
+	if err := f.Write(&buf); err != nil {
+		return nil, errors.New("failed to write Excel file")
+	}
+
+	return &buf, nil
+}
+
+// GetAreaActivity returns activity monitoring data for parking area
+// Simple format: total masuk (checkin) and keluar (checkout) per area
+func (u *adminUsecase) GetAreaActivity(startTime, endTime *time.Time, areaID *uint, regional *string) (map[string]interface{}, error) {
+	// Use provided time range or default to today
+	var actualStart, actualEnd time.Time
+	if startTime != nil && endTime != nil {
+		actualStart = *startTime
+		actualEnd = *endTime
+		// Set end time to end of day
+		actualEnd = time.Date(actualEnd.Year(), actualEnd.Month(), actualEnd.Day(), 23, 59, 59, 0, actualEnd.Location())
+	} else {
+		now := time.Now()
+		actualStart = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		actualEnd = time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, now.Location())
+	}
+
+	// Get areas to monitor
+	var areas []entities.ParkingArea
+	if areaID != nil {
+		area, err := u.areaRepo.GetByID(*areaID)
+		if err != nil {
+			return nil, errors.New("parking area not found")
+		}
+		areas = []entities.ParkingArea{*area}
+	} else {
+		allAreas, _, err := u.areaRepo.List(1000, 0)
+		if err != nil {
+			return nil, errors.New("failed to get areas")
+		}
+		// Filter by regional if specified
+		for _, area := range allAreas {
+			if regional != nil && *regional != "" && area.Regional != *regional {
+				continue
+			}
+			areas = append(areas, area)
+		}
+	}
+
+	if len(areas) == 0 {
+		return nil, errors.New("no areas found")
+	}
+
+	// Process each area
+	result := make([]map[string]interface{}, 0, len(areas))
+	for _, area := range areas {
+		// Get all sessions for this area in date range
+		sessions, err := u.sessionRepo.GetSessionsByArea(area.ID, actualStart, actualEnd)
+		if err != nil {
+			continue
+		}
+
+		// Count masuk (checkin) and keluar (checkout) by vehicle type
+		mobilMasuk := 0
+		mobilKeluar := 0
+		motorMasuk := 0
+		motorKeluar := 0
+
+		for _, session := range sessions {
+			if session.VehicleType == entities.VehicleTypeMobil {
+				mobilMasuk++
+				if session.CheckoutTime != nil {
+					mobilKeluar++
+				}
+			} else if session.VehicleType == entities.VehicleTypeMotor {
+				motorMasuk++
+				if session.CheckoutTime != nil {
+					motorKeluar++
+				}
+			}
+		}
+
+		result = append(result, map[string]interface{}{
+			"area_id":   area.ID,
+			"area_name": area.Name,
+			"regional":  area.Regional,
+			"mobil": map[string]interface{}{
+				"masuk":  mobilMasuk,
+				"keluar": mobilKeluar,
+			},
+			"motor": map[string]interface{}{
+				"masuk":  motorMasuk,
+				"keluar": motorKeluar,
+			},
+			"total_masuk":  mobilMasuk + motorMasuk,
+			"total_keluar": mobilKeluar + motorKeluar,
+		})
+	}
+
+	return map[string]interface{}{
+		"data": result,
+		"summary": map[string]interface{}{
+			"start_date":  actualStart.Format("2006-01-02"),
+			"end_date":    actualEnd.Format("2006-01-02"),
+			"total_areas": len(result),
+		},
+	}, nil
+}
+
+// GetAreaActivityDetail returns detailed activity monitoring data for a specific parking area
+// Breakdown per 15 minutes interval like the CSV format
+func (u *adminUsecase) GetAreaActivityDetail(areaID uint, startTime, endTime *time.Time) (map[string]interface{}, error) {
+	// Get area
+	area, err := u.areaRepo.GetByID(areaID)
+	if err != nil {
+		return nil, errors.New("parking area not found")
+	}
+
+	// Use provided time range or default to today
+	var actualStart, actualEnd time.Time
+	if startTime != nil && endTime != nil {
+		actualStart = *startTime
+		actualEnd = *endTime
+		// Set start time to beginning of day
+		actualStart = time.Date(actualStart.Year(), actualStart.Month(), actualStart.Day(), 0, 0, 0, 0, actualStart.Location())
+		// Set end time to end of day
+		actualEnd = time.Date(actualEnd.Year(), actualEnd.Month(), actualEnd.Day(), 23, 59, 59, 0, actualEnd.Location())
+	} else {
+		now := time.Now()
+		actualStart = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		actualEnd = time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, now.Location())
+	}
+
+	// Validate date range
+	if actualEnd.Before(actualStart) {
+		return nil, errors.New("end date must be after start date")
+	}
+
+	// Limit to max 7 days to prevent too many intervals
+	maxDuration := 7 * 24 * time.Hour
+	if actualEnd.Sub(actualStart) > maxDuration {
+		actualEnd = actualStart.Add(maxDuration)
+	}
+
+	// Get all sessions for this area in date range
+	sessions, err := u.sessionRepo.GetSessionsByArea(area.ID, actualStart, actualEnd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get sessions: %w", err)
+	}
+
+	// Create 15-minute intervals (only from 9am to 5pm)
+	intervals := u.create15MinuteIntervalsWorkHours(actualStart, actualEnd)
+	if len(intervals) == 0 {
+		return nil, errors.New("no intervals created")
+	}
+
+	// Process sessions by vehicle type and interval
+	mobilData := make([]map[string]interface{}, len(intervals))
+	motorData := make([]map[string]interface{}, len(intervals))
+
+	for j, interval := range intervals {
+		intervalStart, ok1 := interval["start"].(time.Time)
+		intervalEnd, ok2 := interval["end"].(time.Time)
+		if !ok1 || !ok2 {
+			// If interval parsing fails, create empty stats
+			mobilData[j] = map[string]interface{}{
+				"periode":       interval["label"],
+				"datang":        0,
+				"berangkat":     0,
+				"akumulasi":     0,
+				"volume":        0,
+				"indeks_parkir": "0%",
+			}
+			motorData[j] = map[string]interface{}{
+				"periode":       interval["label"],
+				"datang":        0,
+				"berangkat":     0,
+				"akumulasi":     0,
+				"volume":        0,
+				"indeks_parkir": "0%",
+			}
+			continue
+		}
+
+		intervalMap := map[string]interface{}{
+			"start": intervalStart,
+			"end":   intervalEnd,
+			"label": interval["label"],
+		}
+
+		mobilStats := u.calculateIntervalStats(sessions, intervalMap, entities.VehicleTypeMobil, area.MaxMobil)
+		motorStats := u.calculateIntervalStats(sessions, intervalMap, entities.VehicleTypeMotor, area.MaxMotor)
+
+		// Ensure indeks_parkir is always present
+		if mobilStats == nil {
+			mobilStats = map[string]interface{}{
+				"periode":       interval["label"],
+				"datang":        0,
+				"berangkat":     0,
+				"akumulasi":     0,
+				"volume":        0,
+				"indeks_parkir": "0%",
+			}
+		}
+		if motorStats == nil {
+			motorStats = map[string]interface{}{
+				"periode":       interval["label"],
+				"datang":        0,
+				"berangkat":     0,
+				"akumulasi":     0,
+				"volume":        0,
+				"indeks_parkir": "0%",
+			}
+		}
+
+		mobilData[j] = mobilStats
+		motorData[j] = motorStats
+	}
+
+	// Calculate totals
+	totalMobilDatang := 0
+	totalMotorDatang := 0
+	for _, mobil := range mobilData {
+		if mobil != nil {
+			if datang, ok := mobil["datang"].(int); ok {
+				totalMobilDatang += datang
+			}
+		}
+	}
+	for _, motor := range motorData {
+		if motor != nil {
+			if datang, ok := motor["datang"].(int); ok {
+				totalMotorDatang += datang
+			}
+		}
+	}
+
+	return map[string]interface{}{
+		"area_id":            area.ID,
+		"area_name":          area.Name,
+		"regional":           area.Regional,
+		"kapasitas_mobil":    area.MaxMobil,
+		"kapasitas_motor":    area.MaxMotor,
+		"start_date":         actualStart.Format("2006-01-02"),
+		"end_date":           actualEnd.Format("2006-01-02"),
+		"mobil":              mobilData,
+		"motor":              motorData,
+		"total_mobil_datang": totalMobilDatang,
+		"total_motor_datang": totalMotorDatang,
+	}, nil
+}
+
+// create15MinuteIntervals creates time intervals of 15 minutes
+func (u *adminUsecase) create15MinuteIntervals(start, end time.Time) []map[string]interface{} {
+	var intervals []map[string]interface{}
+	current := start
+
+	// Safety limit: max 7 days = 672 intervals (7 * 24 * 4)
+	maxIntervals := 672
+	intervalCount := 0
+
+	for !current.After(end) && intervalCount < maxIntervals {
+		intervalEnd := current.Add(15 * time.Minute)
+		if intervalEnd.After(end) {
+			intervalEnd = end
+		}
+
+		intervals = append(intervals, map[string]interface{}{
+			"start": current,
+			"end":   intervalEnd,
+			"label": fmt.Sprintf("%02d.%02d - %02d.%02d", current.Hour(), current.Minute(), intervalEnd.Hour(), intervalEnd.Minute()),
+		})
+
+		nextCurrent := intervalEnd
+		intervalCount++
+
+		// Safety check: if interval didn't advance, break to prevent infinite loop
+		if nextCurrent.Equal(current) || nextCurrent.Before(current) {
+			break
+		}
+
+		current = nextCurrent
+	}
+
+	return intervals
+}
+
+// create15MinuteIntervalsWorkHours creates time intervals of 15 minutes from 9am to 5pm (09:00-17:00)
+func (u *adminUsecase) create15MinuteIntervalsWorkHours(start, end time.Time) []map[string]interface{} {
+	var intervals []map[string]interface{}
+
+	// Process each day in the range
+	currentDate := start
+	maxDays := 7
+	dayCount := 0
+
+	for dayCount < maxDays {
+		// Set work hours: 9am to 5pm for this day
+		workStart := time.Date(currentDate.Year(), currentDate.Month(), currentDate.Day(), 9, 0, 0, 0, currentDate.Location())
+		workEnd := time.Date(currentDate.Year(), currentDate.Month(), currentDate.Day(), 17, 0, 0, 0, currentDate.Location())
+
+		// Skip if work hours don't overlap with requested range
+		if workEnd.Before(start) || workStart.After(end) {
+			currentDate = currentDate.Add(24 * time.Hour)
+			dayCount++
+			if currentDate.After(end) {
+				break
+			}
+			continue
+		}
+
+		// Adjust work hours to fit within requested range (but still within 9am-5pm)
+		if workStart.Before(start) && start.Hour() >= 9 {
+			// If start is after 9am but before 5pm, use start time
+			if start.Hour() < 17 {
+				workStart = time.Date(start.Year(), start.Month(), start.Day(), start.Hour(), start.Minute(), 0, 0, start.Location())
+				// Round down to nearest 15 minutes
+				workStart = workStart.Add(-time.Duration(workStart.Minute()%15) * time.Minute)
+			}
+		}
+
+		if workEnd.After(end) && end.Hour() >= 9 && end.Hour() < 17 {
+			workEnd = end
+		}
+
+		// Only create intervals if work hours are valid (9am-5pm)
+		if workStart.Hour() >= 9 && workStart.Hour() < 17 && workEnd.Hour() >= 9 && workEnd.Hour() <= 17 && !workStart.After(workEnd) {
+			// Create intervals for this day's work hours
+			current := workStart
+			intervalCount := 0
+			maxIntervalsPerDay := 32 // Max 8 hours * 4 intervals per hour
+
+			for intervalCount < maxIntervalsPerDay {
+				// Stop if we've reached or passed 5pm
+				if current.Hour() >= 17 || current.After(workEnd) {
+					break
+				}
+
+				intervalEnd := current.Add(15 * time.Minute)
+				if intervalEnd.After(workEnd) {
+					intervalEnd = workEnd
+				}
+
+				// Stop if interval end passes 5pm
+				if intervalEnd.Hour() > 17 || (intervalEnd.Hour() == 17 && intervalEnd.Minute() > 0) {
+					break
+				}
+
+				// Only add interval if it's within work hours (9am-5pm)
+				if current.Hour() >= 9 && current.Hour() < 17 {
+					intervals = append(intervals, map[string]interface{}{
+						"start": current,
+						"end":   intervalEnd,
+						"label": fmt.Sprintf("%02d.%02d - %02d.%02d", current.Hour(), current.Minute(), intervalEnd.Hour(), intervalEnd.Minute()),
+					})
+				}
+
+				nextCurrent := intervalEnd
+				intervalCount++
+
+				// Safety check
+				if nextCurrent.Equal(current) || nextCurrent.Before(current) {
+					break
+				}
+
+				current = nextCurrent
+			}
+		}
+
+		// Move to next day
+		currentDate = currentDate.Add(24 * time.Hour)
+		dayCount++
+
+		// Stop if we've passed the end date
+		if currentDate.After(end) {
+			break
+		}
+	}
+
+	return intervals
+}
+
+// calculateIntervalStats calculates statistics for a specific interval
+func (u *adminUsecase) calculateIntervalStats(sessions []entities.ParkingSession, interval map[string]interface{}, vehicleType entities.VehicleType, maxCapacity *int) map[string]interface{} {
+	start := interval["start"].(time.Time)
+	end := interval["end"].(time.Time)
+
+	datang := 0    // checkin in this interval
+	berangkat := 0 // checkout in this interval
+	akumulasi := 0 // active vehicles at the END of this interval
+	volume := 0    // total cumulative checkins up to end of interval
+
+	// Count checkins and checkouts in this interval
+	for _, session := range sessions {
+		if session.VehicleType != vehicleType {
+			continue
+		}
+
+		// Count datang (checkin dalam interval ini)
+		// Checkin time is within [start, end]
+		if (session.CheckinTime.After(start) || session.CheckinTime.Equal(start)) &&
+			(session.CheckinTime.Before(end) || session.CheckinTime.Equal(end)) {
+			datang++
+		}
+
+		// Count berangkat (checkout dalam interval ini)
+		if session.CheckoutTime != nil {
+			if (session.CheckoutTime.After(start) || session.CheckoutTime.Equal(start)) &&
+				(session.CheckoutTime.Before(end) || session.CheckoutTime.Equal(end)) {
+				berangkat++
+			}
+		}
+
+		// Calculate akumulasi: active at the END of interval
+		// Session aktif jika: checkin sebelum/sama dengan end, dan (belum checkout atau checkout setelah end)
+		if session.CheckinTime.Before(end) || session.CheckinTime.Equal(end) {
+			if session.CheckoutTime == nil || session.CheckoutTime.After(end) {
+				akumulasi++
+			}
+		}
+
+		// Calculate volume: total checkins up to end of interval
+		if session.CheckinTime.Before(end) || session.CheckinTime.Equal(end) {
+			volume++
+		}
+	}
+
+	// Calculate parking index (% of capacity)
+	var indeksParkir float64
+	if maxCapacity != nil && *maxCapacity > 0 {
+		indeksParkir = (float64(akumulasi) / float64(*maxCapacity)) * 100
+		if indeksParkir > 100 {
+			indeksParkir = 100
+		}
+	}
+
+	return map[string]interface{}{
+		"periode":       interval["label"],
+		"datang":        datang,
+		"berangkat":     berangkat,
+		"akumulasi":     akumulasi,
+		"volume":        volume,
+		"indeks_parkir": fmt.Sprintf("%.0f%%", indeksParkir),
+	}
+}
+
+// GetJukirActivity returns activity monitoring data for jukir
+// Simple format: total masuk (checkin) and keluar (checkout) per jukir
+func (u *adminUsecase) GetJukirActivity(startTime, endTime *time.Time, jukirID *uint, regional *string) (map[string]interface{}, error) {
+	// Use provided time range or default to today
+	var actualStart, actualEnd time.Time
+	if startTime != nil && endTime != nil {
+		actualStart = *startTime
+		actualEnd = *endTime
+		// Set end time to end of day
+		actualEnd = time.Date(actualEnd.Year(), actualEnd.Month(), actualEnd.Day(), 23, 59, 59, 0, actualEnd.Location())
+	} else {
+		now := time.Now()
+		actualStart = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		actualEnd = time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, now.Location())
+	}
+
+	// Get jukirs to monitor
+	var jukirs []entities.Jukir
+	if jukirID != nil {
+		jukir, err := u.jukirRepo.GetByID(*jukirID)
+		if err != nil {
+			return nil, errors.New("jukir not found")
+		}
+		jukirs = []entities.Jukir{*jukir}
+	} else {
+		allJukirs, _, err := u.jukirRepo.List(1000, 0)
+		if err != nil {
+			return nil, errors.New("failed to get jukirs")
+		}
+		// Filter by regional if specified
+		for _, jukir := range allJukirs {
+			if regional != nil && *regional != "" && jukir.Area.Regional != *regional {
+				continue
+			}
+			jukirs = append(jukirs, jukir)
+		}
+	}
+
+	if len(jukirs) == 0 {
+		return nil, errors.New("no jukirs found")
+	}
+
+	// Process each jukir
+	result := make([]map[string]interface{}, 0, len(jukirs))
+	for _, jukir := range jukirs {
+		// Get all sessions for this area in date range
+		allSessions, err := u.sessionRepo.GetSessionsByArea(jukir.AreaID, actualStart, actualEnd)
+		if err != nil {
+			continue
+		}
+
+		// Filter sessions by jukir ID
+		var sessions []entities.ParkingSession
+		for _, session := range allSessions {
+			if session.JukirID != nil && *session.JukirID == jukir.ID {
+				sessions = append(sessions, session)
+			}
+		}
+
+		// Count masuk (checkin) and keluar (checkout) by vehicle type
+		mobilMasuk := 0
+		mobilKeluar := 0
+		motorMasuk := 0
+		motorKeluar := 0
+
+		for _, session := range sessions {
+			if session.VehicleType == entities.VehicleTypeMobil {
+				mobilMasuk++
+				if session.CheckoutTime != nil {
+					mobilKeluar++
+				}
+			} else if session.VehicleType == entities.VehicleTypeMotor {
+				motorMasuk++
+				if session.CheckoutTime != nil {
+					motorKeluar++
+				}
+			}
+		}
+
+		result = append(result, map[string]interface{}{
+			"jukir_id":   jukir.ID,
+			"jukir_name": jukir.User.Name,
+			"area_id":    jukir.Area.ID,
+			"area_name":  jukir.Area.Name,
+			"regional":   jukir.Area.Regional,
+			"mobil": map[string]interface{}{
+				"masuk":  mobilMasuk,
+				"keluar": mobilKeluar,
+			},
+			"motor": map[string]interface{}{
+				"masuk":  motorMasuk,
+				"keluar": motorKeluar,
+			},
+			"total_masuk":  mobilMasuk + motorMasuk,
+			"total_keluar": mobilKeluar + motorKeluar,
+		})
+	}
+
+	return map[string]interface{}{
+		"data": result,
+		"summary": map[string]interface{}{
+			"start_date":   actualStart.Format("2006-01-02"),
+			"end_date":     actualEnd.Format("2006-01-02"),
+			"total_jukirs": len(result),
+		},
+	}, nil
+}
+
+// GetJukirActivityDetail returns detailed activity monitoring data for a specific jukir
+// Breakdown per 15 minutes interval from 9am to 5pm like the CSV format
+func (u *adminUsecase) GetJukirActivityDetail(jukirID uint, startTime, endTime *time.Time) (map[string]interface{}, error) {
+	// Get jukir
+	jukir, err := u.jukirRepo.GetByID(jukirID)
+	if err != nil {
+		return nil, errors.New("jukir not found")
+	}
+
+	// Use provided time range or default to today
+	var actualStart, actualEnd time.Time
+	if startTime != nil && endTime != nil {
+		actualStart = *startTime
+		actualEnd = *endTime
+		// Set start time to beginning of day
+		actualStart = time.Date(actualStart.Year(), actualStart.Month(), actualStart.Day(), 0, 0, 0, 0, actualStart.Location())
+		// Set end time to end of day
+		actualEnd = time.Date(actualEnd.Year(), actualEnd.Month(), actualEnd.Day(), 23, 59, 59, 0, actualEnd.Location())
+	} else {
+		now := time.Now()
+		actualStart = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		actualEnd = time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, now.Location())
+	}
+
+	// Validate date range
+	if actualEnd.Before(actualStart) {
+		return nil, errors.New("end date must be after start date")
+	}
+
+	// Limit to max 7 days to prevent too many intervals
+	maxDuration := 7 * 24 * time.Hour
+	if actualEnd.Sub(actualStart) > maxDuration {
+		actualEnd = actualStart.Add(maxDuration)
+	}
+
+	// Get all sessions for this area in date range
+	allSessions, err := u.sessionRepo.GetSessionsByArea(jukir.AreaID, actualStart, actualEnd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get sessions: %w", err)
+	}
+
+	// Filter sessions by jukir ID
+	var sessions []entities.ParkingSession
+	for _, session := range allSessions {
+		if session.JukirID != nil && *session.JukirID == jukir.ID {
+			sessions = append(sessions, session)
+		}
+	}
+
+	// Create 15-minute intervals (only from 9am to 5pm)
+	intervals := u.create15MinuteIntervalsWorkHours(actualStart, actualEnd)
+	if len(intervals) == 0 {
+		return nil, errors.New("no intervals created")
+	}
+
+	// Process sessions by vehicle type and interval
+	mobilData := make([]map[string]interface{}, len(intervals))
+	motorData := make([]map[string]interface{}, len(intervals))
+
+	for j, interval := range intervals {
+		intervalStart, ok1 := interval["start"].(time.Time)
+		intervalEnd, ok2 := interval["end"].(time.Time)
+		if !ok1 || !ok2 {
+			continue
+		}
+
+		intervalMap := map[string]interface{}{
+			"start": intervalStart,
+			"end":   intervalEnd,
+			"label": interval["label"],
+		}
+
+		mobilStats := u.calculateIntervalStats(sessions, intervalMap, entities.VehicleTypeMobil, jukir.Area.MaxMobil)
+		motorStats := u.calculateIntervalStats(sessions, intervalMap, entities.VehicleTypeMotor, jukir.Area.MaxMotor)
+
+		mobilData[j] = mobilStats
+		motorData[j] = motorStats
+	}
+
+	// Calculate totals
+	totalMobilDatang := 0
+	totalMotorDatang := 0
+	for _, mobil := range mobilData {
+		if mobil != nil {
+			if datang, ok := mobil["datang"].(int); ok {
+				totalMobilDatang += datang
+			}
+		}
+	}
+	for _, motor := range motorData {
+		if motor != nil {
+			if datang, ok := motor["datang"].(int); ok {
+				totalMotorDatang += datang
+			}
+		}
+	}
+
+	return map[string]interface{}{
+		"jukir_id":           jukir.ID,
+		"jukir_name":         jukir.User.Name,
+		"area_id":            jukir.Area.ID,
+		"area_name":          jukir.Area.Name,
+		"regional":           jukir.Area.Regional,
+		"kapasitas_mobil":    jukir.Area.MaxMobil,
+		"kapasitas_motor":    jukir.Area.MaxMotor,
+		"start_date":         actualStart.Format("2006-01-02"),
+		"end_date":           actualEnd.Format("2006-01-02"),
+		"mobil":              mobilData,
+		"motor":              motorData,
+		"total_mobil_datang": totalMobilDatang,
+		"total_motor_datang": totalMotorDatang,
+	}, nil
+}
+
+// ExportAreaActivityCSV exports area activity to CSV format
+func (u *adminUsecase) ExportAreaActivityCSV(startTime, endTime *time.Time, areaID *uint, regional *string) (*bytes.Buffer, error) {
+	activityData, err := u.GetAreaActivity(startTime, endTime, areaID, regional)
+	if err != nil {
+		return nil, err
+	}
+
+	data := activityData["data"].([]map[string]interface{})
+	if len(data) == 0 {
+		return nil, errors.New("no data to export")
+	}
+
+	var buf bytes.Buffer
+	buf.WriteString("REKAPITULASI DATA PARKIR\n")
+	buf.WriteString(";;;;;;;;;;;\n")
+	buf.WriteString(";;;;;;;;;;;\n")
+
+	for _, areaData := range data {
+		areaName := areaData["area_name"].(string)
+		kapasitasMobil := 0
+		if km, ok := areaData["kapasitas_mobil"].(*int); ok && km != nil {
+			kapasitasMobil = *km
+		}
+		kapasitasMotor := 0
+		if km, ok := areaData["kapasitas_motor"].(*int); ok && km != nil {
+			kapasitasMotor = *km
+		}
+
+		// Header with area name and capacity
+		buf.WriteString(fmt.Sprintf("%s;;;Kapasitas ;%d;;%s;;;Kapasitas;%d\n",
+			areaName, kapasitasMobil, areaName, kapasitasMotor))
+
+		// Column headers
+		buf.WriteString("Mobil Penumpang;Jumlah Kendaraan;;Akumulasi;Volume;Indeks Parkir;;Motor;Jumlah Kendaraan;;Akumulasi;Volume;Indeks Parkir\n")
+		buf.WriteString("Periode Pengamatan;Datang;Berangkat;;;;;Periode Pengamatan;Datang;Berangkat;;;\n")
+
+		mobilIntervals := areaData["mobil"].([]map[string]interface{})
+		motorIntervals := areaData["motor"].([]map[string]interface{})
+
+		maxLen := len(mobilIntervals)
+		if len(motorIntervals) > maxLen {
+			maxLen = len(motorIntervals)
+		}
+
+		for i := 0; i < maxLen; i++ {
+			mobilLine := ";"
+			if i < len(mobilIntervals) {
+				m := mobilIntervals[i]
+				mobilLine = fmt.Sprintf("%s;%d;%d;%d;%d;%s",
+					m["periode"], m["datang"], m["berangkat"], m["akumulasi"], m["volume"], m["indeks_parkir"])
+			}
+
+			motorLine := ";"
+			if i < len(motorIntervals) {
+				m := motorIntervals[i]
+				motorLine = fmt.Sprintf(";%s;%d;%d;%d;%d;%s",
+					m["periode"], m["datang"], m["berangkat"], m["akumulasi"], m["volume"], m["indeks_parkir"])
+			}
+
+			buf.WriteString(mobilLine + motorLine + "\n")
+		}
+
+		// Total row
+		totalMobil := areaData["total_mobil_datang"].(int)
+		totalMotor := areaData["total_motor_datang"].(int)
+		buf.WriteString(fmt.Sprintf(";%d;;;;;;%d;;;;\n", totalMobil, totalMotor))
+		buf.WriteString("\n")
+	}
+
+	return &buf, nil
+}
+
+// ExportJukirActivityCSV exports jukir activity to CSV format
+func (u *adminUsecase) ExportJukirActivityCSV(startTime, endTime *time.Time, jukirID *uint, regional *string) (*bytes.Buffer, error) {
+	activityData, err := u.GetJukirActivity(startTime, endTime, jukirID, regional)
+	if err != nil {
+		return nil, err
+	}
+
+	data := activityData["data"].([]map[string]interface{})
+	if len(data) == 0 {
+		return nil, errors.New("no data to export")
+	}
+
+	var buf bytes.Buffer
+	buf.WriteString("REKAPITULASI DATA PARKIR - JUKIR\n")
+	buf.WriteString(";;;;;;;;;;;\n")
+	buf.WriteString(";;;;;;;;;;;\n")
+
+	for _, jukirData := range data {
+		jukirName := jukirData["jukir_name"].(string)
+		areaName := jukirData["area_name"].(string)
+		kapasitasMobil := 0
+		if km, ok := jukirData["kapasitas_mobil"].(*int); ok && km != nil {
+			kapasitasMobil = *km
+		}
+		kapasitasMotor := 0
+		if km, ok := jukirData["kapasitas_motor"].(*int); ok && km != nil {
+			kapasitasMotor = *km
+		}
+
+		// Header with jukir name, area name and capacity
+		buf.WriteString(fmt.Sprintf("%s - %s;;;Kapasitas ;%d;;%s - %s;;;Kapasitas;%d\n",
+			jukirName, areaName, kapasitasMobil, jukirName, areaName, kapasitasMotor))
+
+		// Column headers
+		buf.WriteString("Mobil Penumpang;Jumlah Kendaraan;;Akumulasi;Volume;Indeks Parkir;;Motor;Jumlah Kendaraan;;Akumulasi;Volume;Indeks Parkir\n")
+		buf.WriteString("Periode Pengamatan;Datang;Berangkat;;;;;Periode Pengamatan;Datang;Berangkat;;;\n")
+
+		mobilIntervals := jukirData["mobil"].([]map[string]interface{})
+		motorIntervals := jukirData["motor"].([]map[string]interface{})
+
+		maxLen := len(mobilIntervals)
+		if len(motorIntervals) > maxLen {
+			maxLen = len(motorIntervals)
+		}
+
+		for i := 0; i < maxLen; i++ {
+			mobilLine := ";"
+			if i < len(mobilIntervals) {
+				m := mobilIntervals[i]
+				mobilLine = fmt.Sprintf("%s;%d;%d;%d;%d;%s",
+					m["periode"], m["datang"], m["berangkat"], m["akumulasi"], m["volume"], m["indeks_parkir"])
+			}
+
+			motorLine := ";"
+			if i < len(motorIntervals) {
+				m := motorIntervals[i]
+				motorLine = fmt.Sprintf(";%s;%d;%d;%d;%d;%s",
+					m["periode"], m["datang"], m["berangkat"], m["akumulasi"], m["volume"], m["indeks_parkir"])
+			}
+
+			buf.WriteString(mobilLine + motorLine + "\n")
+		}
+
+		// Total row
+		totalMobil := jukirData["total_mobil_datang"].(int)
+		totalMotor := jukirData["total_motor_datang"].(int)
+		buf.WriteString(fmt.Sprintf(";%d;;;;;;%d;;;;\n", totalMobil, totalMotor))
+		buf.WriteString("\n")
+	}
+
+	return &buf, nil
+}
+
+// ExportAreaActivityDetailXLSX exports area activity detail to XLSX format
+func (u *adminUsecase) ExportAreaActivityDetailXLSX(areaID uint, startTime, endTime *time.Time) (*bytes.Buffer, error) {
+	activityData, err := u.GetAreaActivityDetail(areaID, startTime, endTime)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create new Excel file
+	f := excelize.NewFile()
+	defer func() {
+		if err := f.Close(); err != nil {
+			// Ignore error on close
+		}
+	}()
+
+	sheetName := "Sheet1"
+	index, err := f.NewSheet(sheetName)
+	if err != nil {
+		return nil, errors.New("failed to create sheet")
+	}
+	f.SetActiveSheet(index)
+
+	// Row counter
+	row := 1
+
+	// Title
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "REKAPITULASI DATA PARKIR")
+	row += 2
+
+	// Area name and capacity
+	areaName := activityData["area_name"].(string)
+	kapasitasMobil := 0
+	if km, ok := activityData["kapasitas_mobil"].(*int); ok && km != nil {
+		kapasitasMobil = *km
+	}
+	kapasitasMotor := 0
+	if km, ok := activityData["kapasitas_motor"].(*int); ok && km != nil {
+		kapasitasMotor = *km
+	}
+
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), areaName)
+	f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), "Kapasitas")
+	f.SetCellValue(sheetName, fmt.Sprintf("F%d", row), kapasitasMobil)
+	f.SetCellValue(sheetName, fmt.Sprintf("H%d", row), areaName)
+	f.SetCellValue(sheetName, fmt.Sprintf("L%d", row), "Kapasitas")
+	f.SetCellValue(sheetName, fmt.Sprintf("M%d", row), kapasitasMotor)
+	row++
+
+	// Column headers for Mobil
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Mobil Penumpang")
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), "Jumlah Kendaraan")
+	f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), "Akumulasi")
+	f.SetCellValue(sheetName, fmt.Sprintf("F%d", row), "Volume")
+	f.SetCellValue(sheetName, fmt.Sprintf("G%d", row), "Indeks Parkir")
+
+	// Column headers for Motor
+	f.SetCellValue(sheetName, fmt.Sprintf("H%d", row), "Motor")
+	f.SetCellValue(sheetName, fmt.Sprintf("I%d", row), "Jumlah Kendaraan")
+	f.SetCellValue(sheetName, fmt.Sprintf("L%d", row), "Akumulasi")
+	f.SetCellValue(sheetName, fmt.Sprintf("M%d", row), "Volume")
+	f.SetCellValue(sheetName, fmt.Sprintf("N%d", row), "Indeks Parkir")
+	row++
+
+	// Sub headers
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Periode Pengamatan")
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), "Datang")
+	f.SetCellValue(sheetName, fmt.Sprintf("C%d", row), "Berangkat")
+	f.SetCellValue(sheetName, fmt.Sprintf("H%d", row), "Periode Pengamatan")
+	f.SetCellValue(sheetName, fmt.Sprintf("I%d", row), "Datang")
+	f.SetCellValue(sheetName, fmt.Sprintf("J%d", row), "Berangkat")
+	row++
+
+	// Data rows
+	mobilIntervals := activityData["mobil"].([]map[string]interface{})
+	motorIntervals := activityData["motor"].([]map[string]interface{})
+
+	maxLen := len(mobilIntervals)
+	if len(motorIntervals) > maxLen {
+		maxLen = len(motorIntervals)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		if i < len(mobilIntervals) {
+			m := mobilIntervals[i]
+			f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), m["periode"])
+			f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), m["datang"])
+			f.SetCellValue(sheetName, fmt.Sprintf("C%d", row), m["berangkat"])
+			f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), m["akumulasi"])
+			f.SetCellValue(sheetName, fmt.Sprintf("F%d", row), m["volume"])
+			f.SetCellValue(sheetName, fmt.Sprintf("G%d", row), m["indeks_parkir"])
+		}
+
+		if i < len(motorIntervals) {
+			m := motorIntervals[i]
+			f.SetCellValue(sheetName, fmt.Sprintf("H%d", row), m["periode"])
+			f.SetCellValue(sheetName, fmt.Sprintf("I%d", row), m["datang"])
+			f.SetCellValue(sheetName, fmt.Sprintf("J%d", row), m["berangkat"])
+			f.SetCellValue(sheetName, fmt.Sprintf("L%d", row), m["akumulasi"])
+			f.SetCellValue(sheetName, fmt.Sprintf("M%d", row), m["volume"])
+			f.SetCellValue(sheetName, fmt.Sprintf("N%d", row), m["indeks_parkir"])
+		}
+
+		row++
+	}
+
+	// Total row
+	totalMobil := activityData["total_mobil_datang"].(int)
+	totalMotor := activityData["total_motor_datang"].(int)
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), totalMobil)
+	f.SetCellValue(sheetName, fmt.Sprintf("I%d", row), totalMotor)
+
+	// Write to buffer
+	var buf bytes.Buffer
+	if err := f.Write(&buf); err != nil {
+		return nil, errors.New("failed to write Excel file")
+	}
+
+	return &buf, nil
+}
+
+// ExportJukirActivityDetailXLSX exports jukir activity detail to XLSX format
+func (u *adminUsecase) ExportJukirActivityDetailXLSX(jukirID uint, startTime, endTime *time.Time) (*bytes.Buffer, error) {
+	activityData, err := u.GetJukirActivityDetail(jukirID, startTime, endTime)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create new Excel file
+	f := excelize.NewFile()
+	defer func() {
+		if err := f.Close(); err != nil {
+			// Ignore error on close
+		}
+	}()
+
+	sheetName := "Sheet1"
+	index, err := f.NewSheet(sheetName)
+	if err != nil {
+		return nil, errors.New("failed to create sheet")
+	}
+	f.SetActiveSheet(index)
+
+	// Row counter
+	row := 1
+
+	// Title
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "REKAPITULASI DATA PARKIR - JUKIR")
+	row += 2
+
+	// Jukir name, area name and capacity
+	jukirName := activityData["jukir_name"].(string)
+	areaName := activityData["area_name"].(string)
+	kapasitasMobil := 0
+	if km, ok := activityData["kapasitas_mobil"].(*int); ok && km != nil {
+		kapasitasMobil = *km
+	}
+	kapasitasMotor := 0
+	if km, ok := activityData["kapasitas_motor"].(*int); ok && km != nil {
+		kapasitasMotor = *km
+	}
+
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("%s - %s", jukirName, areaName))
+	f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), "Kapasitas")
+	f.SetCellValue(sheetName, fmt.Sprintf("F%d", row), kapasitasMobil)
+	f.SetCellValue(sheetName, fmt.Sprintf("H%d", row), fmt.Sprintf("%s - %s", jukirName, areaName))
+	f.SetCellValue(sheetName, fmt.Sprintf("L%d", row), "Kapasitas")
+	f.SetCellValue(sheetName, fmt.Sprintf("M%d", row), kapasitasMotor)
+	row++
+
+	// Column headers for Mobil
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Mobil Penumpang")
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), "Jumlah Kendaraan")
+	f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), "Akumulasi")
+	f.SetCellValue(sheetName, fmt.Sprintf("F%d", row), "Volume")
+	f.SetCellValue(sheetName, fmt.Sprintf("G%d", row), "Indeks Parkir")
+
+	// Column headers for Motor
+	f.SetCellValue(sheetName, fmt.Sprintf("H%d", row), "Motor")
+	f.SetCellValue(sheetName, fmt.Sprintf("I%d", row), "Jumlah Kendaraan")
+	f.SetCellValue(sheetName, fmt.Sprintf("L%d", row), "Akumulasi")
+	f.SetCellValue(sheetName, fmt.Sprintf("M%d", row), "Volume")
+	f.SetCellValue(sheetName, fmt.Sprintf("N%d", row), "Indeks Parkir")
+	row++
+
+	// Sub headers
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Periode Pengamatan")
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), "Datang")
+	f.SetCellValue(sheetName, fmt.Sprintf("C%d", row), "Berangkat")
+	f.SetCellValue(sheetName, fmt.Sprintf("H%d", row), "Periode Pengamatan")
+	f.SetCellValue(sheetName, fmt.Sprintf("I%d", row), "Datang")
+	f.SetCellValue(sheetName, fmt.Sprintf("J%d", row), "Berangkat")
+	row++
+
+	// Data rows
+	mobilIntervals := activityData["mobil"].([]map[string]interface{})
+	motorIntervals := activityData["motor"].([]map[string]interface{})
+
+	maxLen := len(mobilIntervals)
+	if len(motorIntervals) > maxLen {
+		maxLen = len(motorIntervals)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		if i < len(mobilIntervals) {
+			m := mobilIntervals[i]
+			f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), m["periode"])
+			f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), m["datang"])
+			f.SetCellValue(sheetName, fmt.Sprintf("C%d", row), m["berangkat"])
+			f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), m["akumulasi"])
+			f.SetCellValue(sheetName, fmt.Sprintf("F%d", row), m["volume"])
+			f.SetCellValue(sheetName, fmt.Sprintf("G%d", row), m["indeks_parkir"])
+		}
+
+		if i < len(motorIntervals) {
+			m := motorIntervals[i]
+			f.SetCellValue(sheetName, fmt.Sprintf("H%d", row), m["periode"])
+			f.SetCellValue(sheetName, fmt.Sprintf("I%d", row), m["datang"])
+			f.SetCellValue(sheetName, fmt.Sprintf("J%d", row), m["berangkat"])
+			f.SetCellValue(sheetName, fmt.Sprintf("L%d", row), m["akumulasi"])
+			f.SetCellValue(sheetName, fmt.Sprintf("M%d", row), m["volume"])
+			f.SetCellValue(sheetName, fmt.Sprintf("N%d", row), m["indeks_parkir"])
+		}
+
+		row++
+	}
+
+	// Total row
+	totalMobil := activityData["total_mobil_datang"].(int)
+	totalMotor := activityData["total_motor_datang"].(int)
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), totalMobil)
+	f.SetCellValue(sheetName, fmt.Sprintf("I%d", row), totalMotor)
+
+	// Write to buffer
+	var buf bytes.Buffer
+	if err := f.Write(&buf); err != nil {
+		return nil, errors.New("failed to write Excel file")
+	}
+
+	return &buf, nil
 }

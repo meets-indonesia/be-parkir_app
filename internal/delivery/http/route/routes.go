@@ -98,10 +98,20 @@ func SetupRoutes(router *gin.Engine, handlers *handler.Handlers, jwtConfig useca
 			admin.GET("/areas/:id", handlers.GetParkingAreaDetail)
 			admin.GET("/areas/:id/status", handlers.GetParkingAreaStatus)
 			admin.GET("/areas/:id/transactions", handlers.GetAreaTransactions)
+			admin.GET("/areas/:id/activity", handlers.GetAreaActivityDetail)
+			admin.GET("/areas/:id/activity/export", handlers.ExportAreaActivityDetailXLSX)
+			admin.GET("/areas/activity", handlers.GetAreaActivity)
+			admin.GET("/areas/activity/export", handlers.ExportAreaActivityCSV)
 			admin.POST("/areas", handlers.CreateParkingArea)
 			admin.PUT("/areas/:id", handlers.UpdateParkingArea)
 			admin.DELETE("/areas/:id", handlers.DeleteParkingArea)
+			admin.GET("/jukirs/activity", handlers.GetJukirActivity)
+			admin.GET("/jukirs/:id/activity", handlers.GetJukirActivityDetail)
+			admin.GET("/jukirs/:id/activity/export", handlers.ExportJukirActivityDetailXLSX)
+			admin.GET("/jukirs/activity/export", handlers.ExportJukirActivityCSV)
 			admin.GET("/revenue-table", handlers.GetRevenueTable)
+			admin.GET("/revenue/export", handlers.ExportRevenueReport)
+			admin.GET("/files/*path", handlers.DownloadFile)        // Proxy endpoint untuk download file dari MinIO
 			admin.GET("/sse-status", handlers.GetEventStreamStatus) // SSE connection status
 		}
 	}

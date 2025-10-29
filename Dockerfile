@@ -1,5 +1,5 @@
 # Multi-stage build for Golang app
-FROM golang:1.21-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -16,8 +16,8 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/server
+# Build the application with minio tag
+RUN CGO_ENABLED=0 GOOS=linux go build -tags=minio -a -installsuffix cgo -o main ./cmd/server
 
 # Final stage
 FROM alpine:latest

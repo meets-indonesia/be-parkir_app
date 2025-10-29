@@ -2,9 +2,13 @@ package handler
 
 import (
 	"be-parkir/internal/domain/entities"
+	"bytes"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -167,7 +171,14 @@ func (h *Handlers) GetJukirs(c *gin.Context) {
 	}
 
 	// Original behavior - return jukirs without revenue
-	jukirs, count, err := h.AdminUC.GetJukirs(limit, offset)
+	regional := c.Query("regional")
+
+	var regionalPtr *string
+	if regional != "" {
+		regionalPtr = &regional
+	}
+
+	jukirs, count, err := h.AdminUC.GetJukirs(limit, offset, regionalPtr)
 	if err != nil {
 		h.Logger.Error("Failed to get jukirs:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -564,37 +575,102 @@ func (h *Handlers) GetAllSessions(c *gin.Context) {
 // @Summary Create parking area
 // @Description Create a new parking area
 // @Tags admin
-// @Accept json
+// @Accept mpfd
 // @Produce json
 // @Security BearerAuth
-// @Param request body entities.CreateParkingAreaRequest true "Parking area data"
+// @Param name formData string true "Name"
+// @Param address formData string true "Address"
+// @Param latitude formData number true "Latitude"
+// @Param longitude formData number true "Longitude"
+// @Param regional formData string true "Regional"
+// @Param hourly_rate formData number true "Hourly Rate"
+// @Param max_mobil formData integer false "Max Mobil"
+// @Param max_motor formData integer false "Max Motor"
+// @Param status_operasional formData string true "Status Operasional (buka/tutup/maintenance)"
+// @Param jenis_area formData string true "Jenis Area (indoor/outdoor/mix)"
+// @Param image formData file false "Area image"
 // @Success 201 {object} map[string]interface{}
 // @Failure 400 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/admin/areas [post]
 func (h *Handlers) CreateParkingArea(c *gin.Context) {
-	var req entities.CreateParkingAreaRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.Logger.Error("Failed to bind JSON:", err)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid request data",
-			"error":   err.Error(),
-		})
+	// Parse form-data
+	if err := c.Request.ParseMultipartForm(10 << 20); err != nil { // 10MB
+		h.Logger.Error("Failed to parse multipart form:", err)
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid form data"})
 		return
 	}
+
+	// Build request struct from form
+	var req entities.CreateParkingAreaRequest
+	req.Name = c.PostForm("name")
+	req.Address = c.PostForm("address")
+	if latStr := c.PostForm("latitude"); latStr != "" {
+		if v, err := strconv.ParseFloat(latStr, 64); err == nil {
+			req.Latitude = v
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid latitude"})
+			return
+		}
+	}
+	if lngStr := c.PostForm("longitude"); lngStr != "" {
+		if v, err := strconv.ParseFloat(lngStr, 64); err == nil {
+			req.Longitude = v
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid longitude"})
+			return
+		}
+	}
+	req.Regional = c.PostForm("regional")
+	if rateStr := c.PostForm("hourly_rate"); rateStr != "" {
+		if v, err := strconv.ParseFloat(rateStr, 64); err == nil {
+			req.HourlyRate = v
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid hourly_rate"})
+			return
+		}
+	}
+	if mm := c.PostForm("max_mobil"); mm != "" {
+		if v, err := strconv.Atoi(mm); err == nil {
+			req.MaxMobil = &v
+		}
+	}
+	if mm := c.PostForm("max_motor"); mm != "" {
+		if v, err := strconv.Atoi(mm); err == nil {
+			req.MaxMotor = &v
+		}
+	}
+	req.StatusOperasional = c.PostForm("status_operasional")
+	req.JenisArea = entities.JenisArea(c.PostForm("jenis_area"))
 
 	// Validate request
 	validate := validator.New()
 	if err := validate.Struct(req); err != nil {
 		h.Logger.Error("Validation failed:", err)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Validation failed",
-			"error":   err.Error(),
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Validation failed", "error": err.Error()})
 		return
+	}
+
+	var imageURL *string
+	// Handle optional image upload
+	fileHeader, err := c.FormFile("image")
+	if err == nil && fileHeader != nil {
+		f, err := fileHeader.Open()
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "failed to open image"})
+			return
+		}
+		defer f.Close()
+		// Upload to MinIO
+		objectName := fmt.Sprintf("areas/%d_%s", time.Now().UnixNano(), fileHeader.Filename)
+		url, err := h.Storage.Upload(c.Request.Context(), objectName, f, fileHeader.Size, fileHeader.Header.Get("Content-Type"))
+		if err != nil {
+			h.Logger.Error("MinIO upload failed:", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Upload failed"})
+			return
+		}
+		imageURL = &url
 	}
 
 	response, err := h.AdminUC.CreateParkingArea(&req)
@@ -605,6 +681,16 @@ func (h *Handlers) CreateParkingArea(c *gin.Context) {
 			"message": err.Error(),
 		})
 		return
+	}
+
+	// If image uploaded, update area with image URL
+	if imageURL != nil {
+		update := entities.UpdateParkingAreaRequest{Image: imageURL}
+		if _, err := h.AdminUC.UpdateParkingArea(response.ID, &update); err != nil {
+			h.Logger.Warn("Area created but failed to set image URL:", err)
+		} else {
+			response.Image = imageURL
+		}
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
@@ -782,6 +868,574 @@ func (h *Handlers) GetAreaTransactions(c *gin.Context) {
 	})
 }
 
+// GetAreaActivity godoc
+// @Summary Get area activity monitoring
+// @Description Get activity monitoring data for all parking areas - total masuk (checkin) and keluar (checkout) per area
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param start_date query string false "Start date (DD-MM-YYYY)"
+// @Param end_date query string false "End date (DD-MM-YYYY)"
+// @Param regional query string false "Filter by regional"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/areas/activity [get]
+func (h *Handlers) GetAreaActivity(c *gin.Context) {
+	// Parse start_date and end_date
+	startTime, endTime, err := parseDateFilter(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	// Parse regional
+	regional := c.Query("regional")
+	var regionalPtr *string
+	if regional != "" {
+		regionalPtr = &regional
+	}
+
+	// Get all areas activity (no area_id filter - shows all areas)
+	response, err := h.AdminUC.GetAreaActivity(startTime, endTime, nil, regionalPtr)
+	if err != nil {
+		h.Logger.Error("Failed to get area activity:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Area activity retrieved successfully",
+		"data":    response,
+	})
+}
+
+// GetAreaActivityDetail godoc
+// @Summary Get detailed area activity monitoring by ID
+// @Description Get detailed activity monitoring data for a specific parking area with 15-minute intervals breakdown
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Area ID"
+// @Param start_date query string false "Start date (DD-MM-YYYY)"
+// @Param end_date query string false "End date (DD-MM-YYYY)"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 404 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/areas/{id}/activity [get]
+func (h *Handlers) GetAreaActivityDetail(c *gin.Context) {
+	// Parse area ID from path
+	areaIDStr := c.Param("id")
+	areaID, err := strconv.ParseUint(areaIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid area ID",
+		})
+		return
+	}
+
+	// Parse start_date and end_date
+	startTime, endTime, err := parseDateFilter(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	response, err := h.AdminUC.GetAreaActivityDetail(uint(areaID), startTime, endTime)
+	if err != nil {
+		h.Logger.Error("Failed to get area activity detail:", err)
+		statusCode := http.StatusInternalServerError
+		if err.Error() == "parking area not found" {
+			statusCode = http.StatusNotFound
+		}
+		c.JSON(statusCode, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Area activity detail retrieved successfully",
+		"data":    response,
+	})
+}
+
+// ExportAreaActivityDetailXLSX godoc
+// @Summary Export area activity detail to XLSX
+// @Description Export detailed area activity monitoring data to XLSX format (like CSV format)
+// @Tags admin
+// @Accept json
+// @Produce application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+// @Security BearerAuth
+// @Param id path int true "Area ID"
+// @Param start_date query string false "Start date (DD-MM-YYYY)"
+// @Param end_date query string false "End date (DD-MM-YYYY)"
+// @Success 200 {file} file "XLSX file"
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 404 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/areas/{id}/activity/export [get]
+func (h *Handlers) ExportAreaActivityDetailXLSX(c *gin.Context) {
+	// Parse area ID from path
+	areaIDStr := c.Param("id")
+	areaID, err := strconv.ParseUint(areaIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid area ID",
+		})
+		return
+	}
+
+	// Parse start_date and end_date
+	startTime, endTime, err := parseDateFilter(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	xlsxBuffer, err := h.AdminUC.ExportAreaActivityDetailXLSX(uint(areaID), startTime, endTime)
+	if err != nil {
+		h.Logger.Error("Failed to export area activity detail:", err)
+		statusCode := http.StatusInternalServerError
+		if err.Error() == "parking area not found" {
+			statusCode = http.StatusNotFound
+		}
+		c.JSON(statusCode, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	// Generate filename
+	filename := fmt.Sprintf("area-activity-detail-%d.xlsx", areaID)
+	if startTime != nil && endTime != nil {
+		filename = fmt.Sprintf("area-activity-detail-%d-%s-to-%s.xlsx",
+			areaID,
+			startTime.Format("2006-01-02"),
+			endTime.Format("2006-01-02"))
+	}
+
+	// Upload to MinIO
+	objectName := fmt.Sprintf("exports/activity/%d_%s", time.Now().UnixNano(), filename)
+	reader := bytes.NewReader(xlsxBuffer.Bytes())
+	_, err = h.Storage.Upload(c.Request.Context(), objectName, reader, int64(xlsxBuffer.Len()), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	if err != nil {
+		h.Logger.Error("Failed to upload XLSX to MinIO:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to store export file",
+		})
+		return
+	}
+
+	downloadURL := fmt.Sprintf("/api/v1/admin/files/%s", objectName)
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Area activity detail exported successfully",
+		"data": gin.H{
+			"filename":    filename,
+			"url":         downloadURL,
+			"object_name": objectName,
+		},
+	})
+}
+
+// GetJukirActivity godoc
+// @Summary Get jukir activity monitoring
+// @Description Get activity monitoring data for all jukirs - total masuk (checkin) and keluar (checkout) per jukir
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param start_date query string false "Start date (DD-MM-YYYY)"
+// @Param end_date query string false "End date (DD-MM-YYYY)"
+// @Param regional query string false "Filter by regional"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/jukirs/activity [get]
+func (h *Handlers) GetJukirActivity(c *gin.Context) {
+	// Parse start_date and end_date
+	startTime, endTime, err := parseDateFilter(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	// Parse regional
+	regional := c.Query("regional")
+	var regionalPtr *string
+	if regional != "" {
+		regionalPtr = &regional
+	}
+
+	// Get all jukirs activity (no jukir_id filter - shows all jukirs)
+	response, err := h.AdminUC.GetJukirActivity(startTime, endTime, nil, regionalPtr)
+	if err != nil {
+		h.Logger.Error("Failed to get jukir activity:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Jukir activity retrieved successfully",
+		"data":    response,
+	})
+}
+
+// GetJukirActivityDetail godoc
+// @Summary Get detailed jukir activity monitoring by ID
+// @Description Get detailed activity monitoring data for a specific jukir with 15-minute intervals breakdown (9am-5pm)
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Jukir ID"
+// @Param start_date query string false "Start date (DD-MM-YYYY)"
+// @Param end_date query string false "End date (DD-MM-YYYY)"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 404 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/jukirs/{id}/activity [get]
+func (h *Handlers) GetJukirActivityDetail(c *gin.Context) {
+	// Parse jukir ID from path
+	jukirIDStr := c.Param("id")
+	jukirID, err := strconv.ParseUint(jukirIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid jukir ID",
+		})
+		return
+	}
+
+	// Parse start_date and end_date
+	startTime, endTime, err := parseDateFilter(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	response, err := h.AdminUC.GetJukirActivityDetail(uint(jukirID), startTime, endTime)
+	if err != nil {
+		h.Logger.Error("Failed to get jukir activity detail:", err)
+		statusCode := http.StatusInternalServerError
+		if err.Error() == "jukir not found" {
+			statusCode = http.StatusNotFound
+		}
+		c.JSON(statusCode, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Jukir activity detail retrieved successfully",
+		"data":    response,
+	})
+}
+
+// ExportJukirActivityDetailXLSX godoc
+// @Summary Export jukir activity detail to XLSX
+// @Description Export detailed jukir activity monitoring data to XLSX format (like CSV format)
+// @Tags admin
+// @Accept json
+// @Produce application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+// @Security BearerAuth
+// @Param id path int true "Jukir ID"
+// @Param start_date query string false "Start date (DD-MM-YYYY)"
+// @Param end_date query string false "End date (DD-MM-YYYY)"
+// @Success 200 {file} file "XLSX file"
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 404 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/jukirs/{id}/activity/export [get]
+func (h *Handlers) ExportJukirActivityDetailXLSX(c *gin.Context) {
+	// Parse jukir ID from path
+	jukirIDStr := c.Param("id")
+	jukirID, err := strconv.ParseUint(jukirIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid jukir ID",
+		})
+		return
+	}
+
+	// Parse start_date and end_date
+	startTime, endTime, err := parseDateFilter(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	xlsxBuffer, err := h.AdminUC.ExportJukirActivityDetailXLSX(uint(jukirID), startTime, endTime)
+	if err != nil {
+		h.Logger.Error("Failed to export jukir activity detail:", err)
+		statusCode := http.StatusInternalServerError
+		if err.Error() == "jukir not found" {
+			statusCode = http.StatusNotFound
+		}
+		c.JSON(statusCode, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	// Generate filename
+	filename := fmt.Sprintf("jukir-activity-detail-%d.xlsx", jukirID)
+	if startTime != nil && endTime != nil {
+		filename = fmt.Sprintf("jukir-activity-detail-%d-%s-to-%s.xlsx",
+			jukirID,
+			startTime.Format("2006-01-02"),
+			endTime.Format("2006-01-02"))
+	}
+
+	// Upload to MinIO
+	objectName := fmt.Sprintf("exports/activity/%d_%s", time.Now().UnixNano(), filename)
+	reader := bytes.NewReader(xlsxBuffer.Bytes())
+	_, err = h.Storage.Upload(c.Request.Context(), objectName, reader, int64(xlsxBuffer.Len()), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	if err != nil {
+		h.Logger.Error("Failed to upload XLSX to MinIO:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to store export file",
+		})
+		return
+	}
+
+	downloadURL := fmt.Sprintf("/api/v1/admin/files/%s", objectName)
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Jukir activity detail exported successfully",
+		"data": gin.H{
+			"filename":    filename,
+			"url":         downloadURL,
+			"object_name": objectName,
+		},
+	})
+}
+
+// ExportAreaActivityCSV godoc
+// @Summary Export area activity to CSV
+// @Description Export area activity monitoring data to CSV format
+// @Tags admin
+// @Accept json
+// @Produce text/csv
+// @Security BearerAuth
+// @Param start_date query string false "Start date (DD-MM-YYYY)"
+// @Param end_date query string false "End date (DD-MM-YYYY)"
+// @Param area_id query int false "Filter by area ID"
+// @Param regional query string false "Filter by regional"
+// @Success 200 {file} file "CSV file"
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/areas/activity/export [get]
+func (h *Handlers) ExportAreaActivityCSV(c *gin.Context) {
+	// Parse start_date and end_date
+	startTime, endTime, err := parseDateFilter(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	// Parse area_id
+	var areaID *uint
+	if areaIDStr := c.Query("area_id"); areaIDStr != "" {
+		if id, err := strconv.ParseUint(areaIDStr, 10, 32); err == nil {
+			areaIDVal := uint(id)
+			areaID = &areaIDVal
+		}
+	}
+
+	// Parse regional
+	regional := c.Query("regional")
+	var regionalPtr *string
+	if regional != "" {
+		regionalPtr = &regional
+	}
+
+	csvBuffer, err := h.AdminUC.ExportAreaActivityCSV(startTime, endTime, areaID, regionalPtr)
+	if err != nil {
+		h.Logger.Error("Failed to export area activity:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	// Generate filename
+	filename := "area-activity.csv"
+	if startTime != nil && endTime != nil {
+		filename = fmt.Sprintf("area-activity-%s-to-%s.csv",
+			startTime.Format("2006-01-02"),
+			endTime.Format("2006-01-02"))
+	}
+
+	// Upload to MinIO
+	objectName := fmt.Sprintf("exports/activity/%d_%s", time.Now().UnixNano(), filename)
+	reader := bytes.NewReader(csvBuffer.Bytes())
+	_, err = h.Storage.Upload(c.Request.Context(), objectName, reader, int64(csvBuffer.Len()), "text/csv")
+	if err != nil {
+		h.Logger.Error("Failed to upload CSV to MinIO:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to store export file",
+		})
+		return
+	}
+
+	downloadURL := fmt.Sprintf("/api/v1/admin/files/%s", objectName)
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Area activity exported successfully",
+		"data": gin.H{
+			"filename":    filename,
+			"url":         downloadURL,
+			"object_name": objectName,
+		},
+	})
+}
+
+// ExportJukirActivityCSV godoc
+// @Summary Export jukir activity to CSV
+// @Description Export jukir activity monitoring data to CSV format
+// @Tags admin
+// @Accept json
+// @Produce text/csv
+// @Security BearerAuth
+// @Param start_date query string false "Start date (DD-MM-YYYY)"
+// @Param end_date query string false "End date (DD-MM-YYYY)"
+// @Param jukir_id query int false "Filter by jukir ID"
+// @Param regional query string false "Filter by regional"
+// @Success 200 {file} file "CSV file"
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/jukirs/activity/export [get]
+func (h *Handlers) ExportJukirActivityCSV(c *gin.Context) {
+	// Parse start_date and end_date
+	startTime, endTime, err := parseDateFilter(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	// Parse jukir_id
+	var jukirID *uint
+	if jukirIDStr := c.Query("jukir_id"); jukirIDStr != "" {
+		if id, err := strconv.ParseUint(jukirIDStr, 10, 32); err == nil {
+			jukirIDVal := uint(id)
+			jukirID = &jukirIDVal
+		}
+	}
+
+	// Parse regional
+	regional := c.Query("regional")
+	var regionalPtr *string
+	if regional != "" {
+		regionalPtr = &regional
+	}
+
+	csvBuffer, err := h.AdminUC.ExportJukirActivityCSV(startTime, endTime, jukirID, regionalPtr)
+	if err != nil {
+		h.Logger.Error("Failed to export jukir activity:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	// Generate filename
+	filename := "jukir-activity.csv"
+	if startTime != nil && endTime != nil {
+		filename = fmt.Sprintf("jukir-activity-%s-to-%s.csv",
+			startTime.Format("2006-01-02"),
+			endTime.Format("2006-01-02"))
+	}
+
+	// Upload to MinIO
+	objectName := fmt.Sprintf("exports/activity/%d_%s", time.Now().UnixNano(), filename)
+	reader := bytes.NewReader(csvBuffer.Bytes())
+	_, err = h.Storage.Upload(c.Request.Context(), objectName, reader, int64(csvBuffer.Len()), "text/csv")
+	if err != nil {
+		h.Logger.Error("Failed to upload CSV to MinIO:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to store export file",
+		})
+		return
+	}
+
+	downloadURL := fmt.Sprintf("/api/v1/admin/files/%s", objectName)
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Jukir activity exported successfully",
+		"data": gin.H{
+			"filename":    filename,
+			"url":         downloadURL,
+			"object_name": objectName,
+		},
+	})
+}
+
 // GetRevenueTable godoc
 // @Summary Get revenue table
 // @Description Get revenue table data for monitor-pendapatan page
@@ -792,6 +1446,9 @@ func (h *Handlers) GetAreaTransactions(c *gin.Context) {
 // @Param area_id query int false "Area ID to filter"
 // @Param limit query int false "Limit" default(10)
 // @Param offset query int false "Offset" default(0)
+// @Param start_date query string false "Start date (DD-MM-YYYY)"
+// @Param end_date query string false "End date (DD-MM-YYYY)"
+// @Param regional query string false "Filter by regional"
 // @Success 200 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
@@ -814,7 +1471,24 @@ func (h *Handlers) GetRevenueTable(c *gin.Context) {
 	limit, _ := strconv.Atoi(limitStr)
 	offset, _ := strconv.Atoi(offsetStr)
 
-	response, count, err := h.AdminUC.GetRevenueTable(limit, offset, areaID)
+	// Parse start_date and end_date
+	startTime, endTime, err := parseDateFilter(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	// Parse regional
+	regional := c.Query("regional")
+	var regionalPtr *string
+	if regional != "" {
+		regionalPtr = &regional
+	}
+
+	response, count, err := h.AdminUC.GetRevenueTable(limit, offset, areaID, startTime, endTime, regionalPtr)
 	if err != nil {
 		h.Logger.Error("Failed to get revenue table:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -836,6 +1510,135 @@ func (h *Handlers) GetRevenueTable(c *gin.Context) {
 			},
 		},
 	})
+}
+
+// ExportRevenueReport godoc
+// @Summary Export revenue report to Excel
+// @Description Export revenue report with actual vs estimated revenue by jukir and area
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param start_date query string false "Start date (DD-MM-YYYY)"
+// @Param end_date query string false "End date (DD-MM-YYYY)"
+// @Param regional query string false "Filter by regional"
+// @Success 200 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/revenue/export [get]
+func (h *Handlers) ExportRevenueReport(c *gin.Context) {
+	// Parse start_date and end_date
+	startTime, endTime, err := parseDateFilter(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	// Parse regional
+	regional := c.Query("regional")
+	var regionalPtr *string
+	if regional != "" {
+		regionalPtr = &regional
+	}
+
+	// Get Excel buffer
+	excelBuffer, err := h.AdminUC.ExportRevenueReport(startTime, endTime, regionalPtr)
+	if err != nil {
+		h.Logger.Error("Failed to export revenue report:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	// Generate object name and upload to MinIO
+	filename := "revenue-report.xlsx"
+	if startTime != nil && endTime != nil {
+		filename = fmt.Sprintf("revenue-report-%s-to-%s.xlsx",
+			startTime.Format("2006-01-02"),
+			endTime.Format("2006-01-02"))
+	}
+	objectName := fmt.Sprintf("exports/%d_%s", time.Now().UnixNano(), filename)
+
+	// Upload file ke MinIO
+	reader := bytes.NewReader(excelBuffer.Bytes())
+	_, err = h.Storage.Upload(c.Request.Context(), objectName, reader, int64(reader.Len()), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	if err != nil {
+		h.Logger.Error("Failed to upload export to MinIO:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to store export file", "error": err.Error()})
+		return
+	}
+
+	// Gunakan proxy URL untuk download (lebih reliable daripada presigned URL)
+	// Format: /api/v1/admin/files/exports/filename.xlsx
+	downloadURL := fmt.Sprintf("/api/v1/admin/files/%s", objectName)
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Export generated successfully",
+		"data": gin.H{
+			"filename":    filename,
+			"url":         downloadURL,
+			"object_name": objectName,
+		},
+	})
+}
+
+// DownloadFile godoc
+// @Summary Download file from MinIO
+// @Description Download file from MinIO storage via proxy
+// @Tags admin
+// @Accept json
+// @Produce application/octet-stream
+// @Security BearerAuth
+// @Param path path string true "File path (e.g., exports/1234567890_report.xlsx)"
+// @Success 200 {file} file "File download"
+// @Failure 401 {object} map[string]interface{}
+// @Failure 404 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/files/{path} [get]
+func (h *Handlers) DownloadFile(c *gin.Context) {
+	filePath := c.Param("path")
+	if filePath == "" || filePath == "/" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "File path is required"})
+		return
+	}
+
+	// Remove leading slash if present
+	if filePath[0] == '/' {
+		filePath = filePath[1:]
+	}
+
+	// Get file from MinIO
+	ctx := c.Request.Context()
+	reader, size, err := h.Storage.GetObject(ctx, filePath)
+	if err != nil {
+		h.Logger.Error("Failed to get file from MinIO:", err)
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "File not found"})
+		return
+	}
+	defer func() {
+		if closer, ok := reader.(io.Closer); ok {
+			closer.Close()
+		}
+	}()
+
+	// Extract filename from path
+	parts := strings.Split(filePath, "/")
+	filename := parts[len(parts)-1]
+
+	// Set headers for file download
+	c.Header("Content-Description", "File Transfer")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Header("Content-Length", fmt.Sprintf("%d", size))
+
+	// Stream file to response
+	c.DataFromReader(http.StatusOK, size, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", reader, nil)
 }
 
 // UpdateParkingArea godoc
@@ -863,26 +1666,87 @@ func (h *Handlers) UpdateParkingArea(c *gin.Context) {
 		return
 	}
 
+	// Check content type - support both JSON and multipart form-data
+	contentType := c.GetHeader("Content-Type")
 	var req entities.UpdateParkingAreaRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.Logger.Error("Failed to bind JSON:", err)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid request data",
-			"error":   err.Error(),
-		})
-		return
+
+	if contentType == "application/json" || strings.Contains(contentType, "application/json") {
+		// Handle JSON request
+		if err := c.ShouldBindJSON(&req); err != nil {
+			h.Logger.Error("Failed to bind JSON:", err)
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid request data", "error": err.Error()})
+			return
+		}
+	} else {
+		// Handle multipart form-data
+		if err := c.Request.ParseMultipartForm(10 << 20); err != nil {
+			h.Logger.Error("Failed to parse multipart form:", err)
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid form data"})
+			return
+		}
+
+		if name := c.PostForm("name"); name != "" {
+			req.Name = &name
+		}
+		if address := c.PostForm("address"); address != "" {
+			req.Address = &address
+		}
+		if latStr := c.PostForm("latitude"); latStr != "" {
+			if v, err := strconv.ParseFloat(latStr, 64); err == nil {
+				req.Latitude = &v
+			}
+		}
+		if lngStr := c.PostForm("longitude"); lngStr != "" {
+			if v, err := strconv.ParseFloat(lngStr, 64); err == nil {
+				req.Longitude = &v
+			}
+		}
+		if regional := c.PostForm("regional"); regional != "" {
+			req.Regional = &regional
+		}
+		if rateStr := c.PostForm("hourly_rate"); rateStr != "" {
+			if v, err := strconv.ParseFloat(rateStr, 64); err == nil {
+				req.HourlyRate = &v
+			}
+		}
+		if mm := c.PostForm("max_mobil"); mm != "" {
+			if v, err := strconv.Atoi(mm); err == nil {
+				req.MaxMobil = &v
+			}
+		}
+		if mm := c.PostForm("max_motor"); mm != "" {
+			if v, err := strconv.Atoi(mm); err == nil {
+				req.MaxMotor = &v
+			}
+		}
+		if so := c.PostForm("status_operasional"); so != "" {
+			req.StatusOperasional = &so
+		}
+		if ja := c.PostForm("jenis_area"); ja != "" {
+			jaVal := entities.JenisArea(ja)
+			req.JenisArea = &jaVal
+		}
 	}
 
-	// Validate request
+	// Handle optional image upload
+	fileHeader, err := c.FormFile("image")
+	if err == nil && fileHeader != nil {
+		f, err := fileHeader.Open()
+		if err == nil {
+			defer f.Close()
+			objectName := fmt.Sprintf("areas/%d_%s", time.Now().UnixNano(), fileHeader.Filename)
+			url, err := h.Storage.Upload(c.Request.Context(), objectName, f, fileHeader.Size, fileHeader.Header.Get("Content-Type"))
+			if err == nil {
+				req.Image = &url
+			}
+		}
+	}
+
+	// Validate request if has any fields
 	validate := validator.New()
 	if err := validate.Struct(req); err != nil {
 		h.Logger.Error("Validation failed:", err)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Validation failed",
-			"error":   err.Error(),
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Validation failed", "error": err.Error()})
 		return
 	}
 
@@ -1111,26 +1975,38 @@ func (h *Handlers) GetVehicleStatistics(c *gin.Context) {
 // @Produce json
 // @Security BearerAuth
 // @Param vehicle_type query string false "Filter by vehicle type (mobil/motor)"
-// @Param date_range query string false "Filter by date range (hari_ini, minggu_ini, bulan_ini)"
+// @Param start_date query string false "Start date (DD-MM-YYYY)"
+// @Param end_date query string false "End date (DD-MM-YYYY)"
+// @Param regional query string false "Filter by regional"
 // @Success 200 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/admin/revenue/total [get]
 func (h *Handlers) GetTotalRevenue(c *gin.Context) {
 	vehicleType := c.Query("vehicle_type")
-	dateRange := c.Query("date_range")
+	regional := c.Query("regional")
 
 	var vehicleTypePtr *string
 	if vehicleType != "" && (vehicleType == "mobil" || vehicleType == "motor") {
 		vehicleTypePtr = &vehicleType
 	}
 
-	var dateRangePtr *string
-	if dateRange != "" && (dateRange == "hari_ini" || dateRange == "minggu_ini" || dateRange == "bulan_ini") {
-		dateRangePtr = &dateRange
+	var regionalPtr *string
+	if regional != "" {
+		regionalPtr = &regional
 	}
 
-	response, err := h.AdminUC.GetTotalRevenue(dateRangePtr, vehicleTypePtr)
+	// Parse start_date and end_date
+	startTime, endTime, err := parseDateFilter(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	response, err := h.AdminUC.GetTotalRevenue(startTime, endTime, vehicleTypePtr, regionalPtr)
 	if err != nil {
 		h.Logger.Error("Failed to get total revenue:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{

@@ -107,7 +107,8 @@ func (r *parkingSessionRepository) GetPendingPayments(jukirID uint) ([]entities.
 func (r *parkingSessionRepository) GetSessionsByArea(areaID uint, startDate, endDate time.Time) ([]entities.ParkingSession, error) {
 	var sessions []entities.ParkingSession
 	err := r.db.Preload("Jukir").Preload("Area").Preload("Payment").
-		Where("area_id = ? AND created_at BETWEEN ? AND ?", areaID, startDate, endDate).
+		Where("area_id = ? AND checkin_time >= ? AND checkin_time <= ?", areaID, startDate, endDate).
+		Order("checkin_time ASC").
 		Find(&sessions).Error
 	return sessions, err
 }

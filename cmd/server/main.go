@@ -9,6 +9,7 @@ import (
 	"be-parkir/internal/delivery/http/handler"
 	"be-parkir/internal/delivery/http/middleware"
 	"be-parkir/internal/repository"
+	"be-parkir/internal/storage"
 	"be-parkir/internal/usecase"
 
 	"github.com/gin-gonic/gin"
@@ -81,8 +82,14 @@ func main() {
 	parkingUC := usecase.NewParkingUsecase(sessionRepo, areaRepo, userRepo, jukirRepo, paymentRepo, eventManager)
 	adminUC := usecase.NewAdminUsecase(userRepo, jukirRepo, areaRepo, sessionRepo, paymentRepo)
 
+	// Initialize MinIO storage client
+	minioClient, err := storage.NewMinIOClient(cfg.MinIO)
+	if err != nil {
+		logger.Fatal("Failed to initialize MinIO:", err)
+	}
+
 	// Initialize HTTP handlers
-	handlers := handler.NewHandlers(authUC, userUC, jukirUC, parkingUC, adminUC, eventManager, logger)
+	handlers := handler.NewHandlers(authUC, userUC, jukirUC, parkingUC, adminUC, eventManager, logger, minioClient)
 
 	// Setup middleware configurations
 	apiKeyConfig := &middleware.APIKeyConfig{
