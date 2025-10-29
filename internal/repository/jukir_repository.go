@@ -68,7 +68,7 @@ func (r *jukirRepository) GetByJukirCode(jukirCode string) (*entities.Jukir, err
 }
 
 func (r *jukirRepository) Update(jukir *entities.Jukir) error {
-	return r.db.Save(jukir).Error
+	return r.db.Model(jukir).Omit("User", "Area", "Sessions").Updates(jukir).Error
 }
 
 func (r *jukirRepository) Delete(id uint) error {
