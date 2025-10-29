@@ -33,12 +33,14 @@ type Jukir struct {
 
 type CreateJukirRequest struct {
 	Name   string       `json:"name" validate:"required,min=2,max=100"`
+	Phone  string       `json:"phone" validate:"required,min=10,max=15"`
 	AreaID uint         `json:"area_id" validate:"required"`
 	Status *JukirStatus `json:"status,omitempty" validate:"omitempty,oneof=active inactive pending"`
 }
 
 type UpdateJukirRequest struct {
 	Name      *string      `json:"name,omitempty" validate:"omitempty,min=2,max=100"`
+	Phone     *string      `json:"phone,omitempty" validate:"omitempty,min=10,max=15"`
 	JukirCode *string      `json:"jukir_code,omitempty" validate:"omitempty,min=3,max=20"`
 	AreaID    *uint        `json:"area_id,omitempty" validate:"omitempty"`
 	Status    *JukirStatus `json:"status,omitempty" validate:"omitempty,oneof=active inactive pending"`

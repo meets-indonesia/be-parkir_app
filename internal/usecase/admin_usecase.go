@@ -26,7 +26,7 @@ type AdminUsecase interface {
 	GetParkingAreaStatistics() (map[string]interface{}, error)
 	GetJukirStatistics() (map[string]interface{}, error)
 	AddManualRevenue(req *entities.JukirRevenueRequest) (*entities.JukirRevenueResponse, error)
-	GetParkingAreas() ([]entities.ParkingArea, error)
+	GetParkingAreas() ([]map[string]interface{}, error)
 	GetParkingAreaDetail(areaID uint) (map[string]interface{}, error)
 	GetParkingAreaStatus(areaID uint) (map[string]interface{}, error)
 	GetAreaTransactions(areaID uint, limit, offset int) ([]map[string]interface{}, int64, error)
@@ -465,7 +465,7 @@ func (u *adminUsecase) CreateJukir(req *entities.CreateJukirRequest) (*entities.
 	user := &entities.User{
 		Name:     req.Name,
 		Email:    email,
-		Phone:    "", // Empty phone for jukir
+		Phone:    req.Phone,
 		Password: string(hashedPassword),
 		Role:     entities.RoleJukir,
 		Status:   entities.UserStatusActive,
@@ -1184,8 +1184,17 @@ func (u *adminUsecase) UpdateJukir(jukirID uint, req *entities.UpdateJukirReques
 	// Update name if provided
 	if req.Name != nil {
 		jukir.User.Name = *req.Name
+	}
+
+	// Update phone if provided
+	if req.Phone != nil {
+		jukir.User.Phone = *req.Phone
+	}
+
+	// Update user if name or phone is provided
+	if req.Name != nil || req.Phone != nil {
 		if err := u.userRepo.Update(&jukir.User); err != nil {
-			return nil, errors.New("failed to update jukir name")
+			return nil, errors.New("failed to update jukir user data")
 		}
 	}
 
@@ -1311,6 +1320,7 @@ func (u *adminUsecase) CreateParkingArea(req *entities.CreateParkingAreaRequest)
 		Address:           req.Address,
 		Latitude:          req.Latitude,
 		Longitude:         req.Longitude,
+		Regional:          req.Regional,
 		HourlyRate:        req.HourlyRate,
 		Status:            entities.AreaStatusActive,
 		MaxMobil:          req.MaxMobil,
@@ -1345,6 +1355,9 @@ func (u *adminUsecase) UpdateParkingArea(areaID uint, req *entities.UpdateParkin
 	if req.Longitude != nil {
 		area.Longitude = *req.Longitude
 	}
+	if req.Regional != nil {
+		area.Regional = *req.Regional
+	}
 	if req.HourlyRate != nil {
 		area.HourlyRate = *req.HourlyRate
 	}
@@ -1368,7 +1381,23 @@ func (u *adminUsecase) UpdateParkingArea(areaID uint, req *entities.UpdateParkin
 		return nil, errors.New("failed to update parking area")
 	}
 
-	return area, nil
+	// Return clean area data without jukirs
+	return &entities.ParkingArea{
+		ID:                area.ID,
+		Name:              area.Name,
+		Address:           area.Address,
+		Latitude:          area.Latitude,
+		Longitude:         area.Longitude,
+		Regional:          area.Regional,
+		HourlyRate:        area.HourlyRate,
+		Status:            area.Status,
+		MaxMobil:          area.MaxMobil,
+		MaxMotor:          area.MaxMotor,
+		StatusOperasional: area.StatusOperasional,
+		JenisArea:         area.JenisArea,
+		CreatedAt:         area.CreatedAt,
+		UpdatedAt:         area.UpdatedAt,
+	}, nil
 }
 
 func (u *adminUsecase) DeleteParkingArea(areaID uint) error {
@@ -1386,13 +1415,59 @@ func (u *adminUsecase) DeleteParkingArea(areaID uint) error {
 	return nil
 }
 
-func (u *adminUsecase) GetParkingAreas() ([]entities.ParkingArea, error) {
+func (u *adminUsecase) GetParkingAreas() ([]map[string]interface{}, error) {
 	// Get all areas using List without limit/offset to get all areas with status
 	areas, _, err := u.areaRepo.List(1000, 0) // Large limit to get all
 	if err != nil {
 		return nil, errors.New("failed to get parking areas")
 	}
-	return areas, nil
+
+	// Build response with jukirs data for each area
+	result := make([]map[string]interface{}, len(areas))
+	for i, area := range areas {
+		areaMap := map[string]interface{}{
+			"id":                 area.ID,
+			"name":               area.Name,
+			"address":            area.Address,
+			"latitude":           area.Latitude,
+			"longitude":          area.Longitude,
+			"regional":           area.Regional,
+			"hourly_rate":        area.HourlyRate,
+			"status":             area.Status,
+			"max_mobil":          area.MaxMobil,
+			"max_motor":          area.MaxMotor,
+			"status_operasional": area.StatusOperasional,
+			"jenis_area":         area.JenisArea,
+			"created_at":         area.CreatedAt,
+			"updated_at":         area.UpdatedAt,
+			"jukirs":             []map[string]interface{}{},
+		}
+
+		// Get jukirs for this area
+		jukirs, err := u.jukirRepo.GetByAreaID(area.ID)
+		if err == nil {
+			jukirsData := make([]map[string]interface{}, len(jukirs))
+			for j, jukir := range jukirs {
+				jukirsData[j] = map[string]interface{}{
+					"id":         jukir.ID,
+					"jukir_code": jukir.JukirCode,
+					"qr_token":   jukir.QRToken,
+					"status":     jukir.Status,
+					"user_id":    jukir.UserID,
+					"name":       jukir.User.Name,
+					"email":      jukir.User.Email,
+					"phone":      jukir.User.Phone,
+					"created_at": jukir.CreatedAt,
+					"updated_at": jukir.UpdatedAt,
+				}
+			}
+			areaMap["jukirs"] = jukirsData
+		}
+
+		result[i] = areaMap
+	}
+
+	return result, nil
 }
 
 func (u *adminUsecase) GetParkingAreaDetail(areaID uint) (map[string]interface{}, error) {
@@ -1402,18 +1477,10 @@ func (u *adminUsecase) GetParkingAreaDetail(areaID uint) (map[string]interface{}
 		return nil, errors.New("parking area not found")
 	}
 
-	// Get jukirs for this area
-	jukirs, _, err := u.jukirRepo.List(1000, 0)
+	// Get jukirs for this area with preloaded user data
+	jukirs, err := u.jukirRepo.GetByAreaID(areaID)
 	if err != nil {
-		return nil, errors.New("failed to get jukirs")
-	}
-
-	// Filter jukirs by area
-	var areaJukirs []entities.Jukir
-	for _, jukir := range jukirs {
-		if jukir.AreaID == areaID {
-			areaJukirs = append(areaJukirs, jukir)
-		}
+		jukirs = []entities.Jukir{} // Return empty array if error
 	}
 
 	// Count sessions for today
@@ -1439,13 +1506,55 @@ func (u *adminUsecase) GetParkingAreaDetail(areaID uint) (map[string]interface{}
 		}
 	}
 
+	// Format area data (without jukirs nested)
+	areaMap := map[string]interface{}{
+		"id":                 area.ID,
+		"name":               area.Name,
+		"address":            area.Address,
+		"latitude":           area.Latitude,
+		"longitude":          area.Longitude,
+		"regional":           area.Regional,
+		"hourly_rate":        area.HourlyRate,
+		"status":             area.Status,
+		"max_mobil":          area.MaxMobil,
+		"max_motor":          area.MaxMotor,
+		"status_operasional": area.StatusOperasional,
+		"jenis_area":         area.JenisArea,
+		"created_at":         area.CreatedAt,
+		"updated_at":         area.UpdatedAt,
+	}
+
+	// Format jukirs data (without nested area, only user info)
+	jukirsData := make([]map[string]interface{}, len(jukirs))
+	for i, jukir := range jukirs {
+		jukirsData[i] = map[string]interface{}{
+			"id":         jukir.ID,
+			"user_id":    jukir.UserID,
+			"jukir_code": jukir.JukirCode,
+			"qr_token":   jukir.QRToken,
+			"status":     jukir.Status,
+			"created_at": jukir.CreatedAt,
+			"updated_at": jukir.UpdatedAt,
+			"user": map[string]interface{}{
+				"id":         jukir.User.ID,
+				"name":       jukir.User.Name,
+				"email":      jukir.User.Email,
+				"phone":      jukir.User.Phone,
+				"role":       jukir.User.Role,
+				"status":     jukir.User.Status,
+				"created_at": jukir.User.CreatedAt,
+				"updated_at": jukir.User.UpdatedAt,
+			},
+		}
+	}
+
 	return map[string]interface{}{
-		"area":            area,
-		"jukirs":          areaJukirs,
+		"area":            areaMap,
+		"jukirs":          jukirsData,
 		"total_sessions":  totalSessions,
 		"active_sessions": activeSessions,
 		"total_revenue":   totalRevenue,
-		"jukir_count":     len(areaJukirs),
+		"jukir_count":     len(jukirs),
 	}, nil
 }
 
