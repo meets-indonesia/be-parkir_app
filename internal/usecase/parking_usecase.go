@@ -13,6 +13,7 @@ type ParkingUsecase interface {
 	Checkin(req *entities.CheckinRequest) (*entities.CheckinResponse, error)
 	Checkout(req *entities.CheckoutRequest) (*entities.CheckoutResponse, error)
 	GetActiveSession(qrToken string) (*entities.ActiveSessionResponse, error)
+	GetActiveSessionByID(sessionID uint) (*entities.ActiveSessionResponse, error)
 	GetSessionByID(sessionID uint) (*entities.ParkingSession, error)
 	GetHistoryByPlatNomor(platNomor string, limit, offset int) (*entities.SessionHistoryResponse, error)
 	GetHistoryBySession(sessionID uint) (*entities.ParkingSession, error)
@@ -236,6 +237,33 @@ func (u *parkingUsecase) GetActiveSession(qrToken string) (*entities.ActiveSessi
 		HourlyRate:  session.Area.HourlyRate, // Ini sebenarnya flat rate
 		Duration:    durationMinutes,
 		CurrentCost: currentCost, // Flat rate
+	}, nil
+}
+
+func (u *parkingUsecase) GetActiveSessionByID(sessionID uint) (*entities.ActiveSessionResponse, error) {
+	session, err := u.sessionRepo.GetByID(sessionID)
+	if err != nil {
+		return nil, errors.New("session not found")
+	}
+
+	if session.SessionStatus != entities.SessionStatusActive {
+		return nil, errors.New("no active parking session found for this session ID")
+	}
+
+	durationMinutes := int(time.Since(session.CheckinTime).Minutes())
+	if durationMinutes < 0 {
+		durationMinutes = 0
+	}
+
+	currentCost := session.Area.HourlyRate // Flat rate
+
+	return &entities.ActiveSessionResponse{
+		SessionID:   session.ID,
+		CheckinTime: session.CheckinTime,
+		Area:        session.Area.Name,
+		HourlyRate:  session.Area.HourlyRate, // Flat rate label retained for compatibility
+		Duration:    durationMinutes,
+		CurrentCost: currentCost,
 	}, nil
 }
 

@@ -293,27 +293,36 @@ func (h *Handlers) Checkout(c *gin.Context) {
 
 // GetActiveSession godoc
 // @Summary Get active parking session
-// @Description Get active parking session by QR token (anonymous)
+// @Description Get active parking session by session ID (anonymous)
 // @Tags parking
 // @Accept json
 // @Produce json
-// @Param qr_token query string true "QR token"
+// @Param id path int true "Session ID"
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]interface{}
 // @Failure 404 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
-// @Router /api/v1/parking/active [get]
+// @Router /api/v1/parking/active/{id} [get]
 func (h *Handlers) GetActiveSession(c *gin.Context) {
-	qrToken := c.Query("qr_token")
-	if qrToken == "" {
+	idStr := c.Param("id")
+	if idStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "QR token is required",
+			"message": "Session ID is required",
 		})
 		return
 	}
 
-	response, err := h.ParkingUC.GetActiveSession(qrToken)
+	sessionID64, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil || sessionID64 == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid session ID",
+		})
+		return
+	}
+
+	response, err := h.ParkingUC.GetActiveSessionByID(uint(sessionID64))
 	if err != nil {
 		h.Logger.Error("Failed to get active session:", err)
 		c.JSON(http.StatusNotFound, gin.H{
@@ -422,6 +431,56 @@ func (h *Handlers) GetParkingHistory(c *gin.Context) {
 				"offset": offset,
 				"total":  response.Count,
 			},
+		},
+	})
+}
+
+// GetParkingHistoryByID godoc
+// @Summary Get parking history by session ID
+// @Description Get single parking session by session ID (anonymous)
+// @Tags parking
+// @Accept json
+// @Produce json
+// @Param id path int true "Session ID"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 404 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/parking/history/{id} [get]
+func (h *Handlers) GetParkingHistoryByID(c *gin.Context) {
+	idStr := c.Param("id")
+	if idStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Session ID is required",
+		})
+		return
+	}
+
+	sessionID, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil || sessionID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid session ID",
+		})
+		return
+	}
+
+	session, err := h.ParkingUC.GetHistoryBySession(uint(sessionID))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Parking history retrieved successfully",
+		"data": gin.H{
+			"sessions": []entities.ParkingSession{*session},
+			"count":    1,
 		},
 	})
 }
