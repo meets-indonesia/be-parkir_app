@@ -154,10 +154,14 @@ func (u *parkingUsecase) Checkout(req *entities.CheckoutRequest) (*entities.Chec
 		}
 	}
 
-	// Calculate duration and cost based on area's hourly rate
+	// Calculate duration and cost (FLAT RATE, not per hour)
 	checkoutTime := time.Now()
 	duration := int(checkoutTime.Sub(session.CheckinTime).Minutes())
-	totalCost := session.Area.HourlyRate // Use area's hourly rate
+	if duration < 0 {
+		duration = 0 // Handle edge case
+	}
+	// Biaya parkir adalah FLAT RATE (bukan per jam)
+	totalCost := session.Area.HourlyRate // Flat rate, bukan hourly rate
 
 	// Update session
 	session.CheckoutTime = &checkoutTime
@@ -217,17 +221,21 @@ func (u *parkingUsecase) GetActiveSession(qrToken string) (*entities.ActiveSessi
 		return nil, errors.New("no active parking session found for this QR code")
 	}
 
-	// Calculate current cost based on area's hourly rate
-	duration := int(time.Since(session.CheckinTime).Minutes())
-	currentCost := session.Area.HourlyRate // Use area's hourly rate
+	// Calculate duration (handle negative if checkin_time is in future)
+	durationMinutes := int(time.Since(session.CheckinTime).Minutes())
+	if durationMinutes < 0 {
+		durationMinutes = 0
+	}
+	// Biaya parkir adalah FLAT RATE (bukan per jam)
+	currentCost := session.Area.HourlyRate // Flat rate, bukan hourly rate
 
 	return &entities.ActiveSessionResponse{
 		SessionID:   session.ID,
 		CheckinTime: session.CheckinTime,
 		Area:        session.Area.Name,
-		HourlyRate:  session.Area.HourlyRate,
-		Duration:    duration,
-		CurrentCost: currentCost,
+		HourlyRate:  session.Area.HourlyRate, // Ini sebenarnya flat rate
+		Duration:    durationMinutes,
+		CurrentCost: currentCost, // Flat rate
 	}, nil
 }
 
@@ -337,9 +345,13 @@ func (u *parkingUsecase) ManualCheckout(jukirID uint, req *entities.ManualChecko
 		return nil, errors.New("session is not a manual record")
 	}
 
-	// Calculate duration and cost based on area's hourly rate
+	// Calculate duration and cost (FLAT RATE, not per hour)
 	duration := int(req.WaktuKeluar.Sub(session.CheckinTime).Minutes())
-	totalCost := session.Area.HourlyRate // Use area's hourly rate
+	if duration < 0 {
+		duration = 0 // Handle edge case
+	}
+	// Biaya parkir adalah FLAT RATE (bukan per jam)
+	totalCost := session.Area.HourlyRate // Flat rate, bukan hourly rate
 
 	// Update session
 	session.CheckoutTime = &req.WaktuKeluar

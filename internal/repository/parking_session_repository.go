@@ -18,6 +18,7 @@ type ParkingSessionRepository interface {
 	GetJukirActiveSessions(jukirID uint) ([]entities.ParkingSession, error)
 	GetPendingPayments(jukirID uint) ([]entities.ParkingSession, error)
 	GetSessionsByArea(areaID uint, startDate, endDate time.Time) ([]entities.ParkingSession, error)
+	GetSessionsByJukir(jukirID uint, startDate, endDate time.Time) ([]entities.ParkingSession, error)
 	GetAllSessions(limit, offset int, filters map[string]interface{}) ([]entities.ParkingSession, int64, error)
 }
 
@@ -90,6 +91,8 @@ func (r *parkingSessionRepository) GetHistoryByPlatNomor(platNomor string, limit
 
 func (r *parkingSessionRepository) GetJukirActiveSessions(jukirID uint) ([]entities.ParkingSession, error) {
 	var sessions []entities.ParkingSession
+	// Get all active sessions for this jukir (includes both manual and QR input)
+	// Filter by jukir_id only, regardless of is_manual_record flag
 	err := r.db.Preload("Jukir").Preload("Area").Preload("Payment").
 		Where("jukir_id = ? AND session_status = ?", jukirID, entities.SessionStatusActive).
 		Find(&sessions).Error
@@ -108,6 +111,18 @@ func (r *parkingSessionRepository) GetSessionsByArea(areaID uint, startDate, end
 	var sessions []entities.ParkingSession
 	err := r.db.Preload("Jukir").Preload("Area").Preload("Payment").
 		Where("area_id = ? AND checkin_time >= ? AND checkin_time <= ?", areaID, startDate, endDate).
+		Order("checkin_time ASC").
+		Find(&sessions).Error
+	return sessions, err
+}
+
+func (r *parkingSessionRepository) GetSessionsByJukir(jukirID uint, startDate, endDate time.Time) ([]entities.ParkingSession, error) {
+	var sessions []entities.ParkingSession
+	// Get all sessions for this jukir (both manual and QR input)
+	// Filter by jukir_id regardless of is_manual_record flag
+	// Use < endDate (not <=) to exclude the next day's sessions
+	err := r.db.Preload("Jukir").Preload("Area").Preload("Payment").
+		Where("jukir_id = ? AND checkin_time >= ? AND checkin_time < ?", jukirID, startDate, endDate).
 		Order("checkin_time ASC").
 		Find(&sessions).Error
 	return sessions, err

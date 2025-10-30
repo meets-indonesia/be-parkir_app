@@ -58,7 +58,7 @@ type JukirQRResponse struct {
 	Area    string `json:"area_name"`
 	Code    string `json:"jukir_code"`
 }
-
+	
 type VehicleBreakdownResponse struct {
 	VehiclesIn     int `json:"vehicles_in"`
 	VehiclesOut    int `json:"vehicles_out"`

@@ -10,7 +10,7 @@ import (
 type JukirUsecase interface {
 	GetDashboard(jukirID uint) (*entities.JukirDashboardResponse, error)
 	GetPendingPayments(jukirID uint) ([]entities.PendingPaymentResponse, error)
-	GetActiveSessions(jukirID uint) ([]entities.ParkingSession, error)
+	GetActiveSessions(jukirID uint) ([]entities.ActiveSessionResponse, error)
 	ConfirmPayment(jukirID uint, req *entities.ConfirmPaymentRequest) (*entities.ConfirmPaymentResponse, error)
 	GetQRCode(jukirID uint) (*entities.JukirQRResponse, error)
 	GetDailyReport(jukirID uint, date time.Time) (*entities.DailyReportResponse, error)
@@ -37,34 +37,28 @@ func NewJukirUsecase(jukirRepo repository.JukirRepository, areaRepo repository.P
 }
 
 func (u *jukirUsecase) GetDashboard(jukirID uint) (*entities.JukirDashboardResponse, error) {
-	// Get jukir info
-	jukir, err := u.jukirRepo.GetByID(jukirID)
-	if err != nil {
-		return nil, errors.New("jukir not found")
-	}
-
-	// Get pending payments count
+	// Get pending payments count (already filtered by jukir_id)
 	pendingSessions, err := u.sessionRepo.GetPendingPayments(jukirID)
 	if err != nil {
 		return nil, errors.New("failed to get pending payments")
 	}
 
-	// Get daily revenue
+	// Get daily revenue (already filtered by jukir_id)
 	dailyRevenue, err := u.paymentRepo.GetJukirDailyRevenue(jukirID, time.Now())
 	if err != nil {
 		return nil, errors.New("failed to get daily revenue")
 	}
 
-	// Get active sessions count
+	// Get active sessions count (already filtered by jukir_id)
 	activeSessions, err := u.sessionRepo.GetJukirActiveSessions(jukirID)
 	if err != nil {
 		return nil, errors.New("failed to get active sessions")
 	}
 
-	// Get total transactions for today
+	// Get total transactions for today (filter by jukir_id, not area_id)
 	startOfDay := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 0, 0, 0, 0, time.Now().Location())
 	endOfDay := startOfDay.Add(24 * time.Hour)
-	todaySessions, err := u.sessionRepo.GetSessionsByArea(jukir.AreaID, startOfDay, endOfDay)
+	todaySessions, err := u.sessionRepo.GetSessionsByJukir(jukirID, startOfDay, endOfDay)
 	if err != nil {
 		return nil, errors.New("failed to get today's sessions")
 	}
@@ -106,12 +100,41 @@ func (u *jukirUsecase) GetPendingPayments(jukirID uint) ([]entities.PendingPayme
 	return pendingPayments, nil
 }
 
-func (u *jukirUsecase) GetActiveSessions(jukirID uint) ([]entities.ParkingSession, error) {
+func (u *jukirUsecase) GetActiveSessions(jukirID uint) ([]entities.ActiveSessionResponse, error) {
+	// Get all active sessions for this jukir (includes both manual and QR input)
 	sessions, err := u.sessionRepo.GetJukirActiveSessions(jukirID)
 	if err != nil {
 		return nil, errors.New("failed to get active sessions")
 	}
-	return sessions, nil
+
+	// Transform to simplified active session response (only essential data)
+	var activeSessions []entities.ActiveSessionResponse
+	now := time.Now()
+	for _, session := range sessions {
+		// Calculate duration (handle negative if checkin_time is in future)
+		durationMinutes := int(now.Sub(session.CheckinTime).Minutes())
+		if durationMinutes < 0 {
+			durationMinutes = 0 // If checkin_time is in future, set duration to 0
+		}
+
+		// Biaya parkir adalah FLAT RATE (tidak per jam)
+		// HourlyRate sebenarnya adalah flat rate untuk sekali parkir
+		currentCost := session.Area.HourlyRate // Flat rate, tidak dikali jam
+		if currentCost < 0 {
+			currentCost = 0
+		}
+
+		activeSessions = append(activeSessions, entities.ActiveSessionResponse{
+			SessionID:   session.ID,
+			CheckinTime: session.CheckinTime,
+			Area:        session.Area.Name,
+			HourlyRate:  session.Area.HourlyRate, // Ini adalah flat rate
+			Duration:    durationMinutes,
+			CurrentCost: currentCost, // Flat rate, tidak per jam
+		})
+	}
+
+	return activeSessions, nil
 }
 
 func (u *jukirUsecase) ConfirmPayment(jukirID uint, req *entities.ConfirmPaymentRequest) (*entities.ConfirmPaymentResponse, error) {
@@ -199,16 +222,11 @@ func (u *jukirUsecase) GetQRCode(jukirID uint) (*entities.JukirQRResponse, error
 }
 
 func (u *jukirUsecase) GetDailyReport(jukirID uint, date time.Time) (*entities.DailyReportResponse, error) {
-	// Get jukir info
-	jukir, err := u.jukirRepo.GetByID(jukirID)
-	if err != nil {
-		return nil, errors.New("jukir not found")
-	}
-
-	// Get sessions for the date
+	// Get all sessions for the date (includes both manual and QR input)
+	// Filter by jukir_id, not area_id - includes all session types
 	startOfDay := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
 	endOfDay := startOfDay.Add(24 * time.Hour)
-	sessions, err := u.sessionRepo.GetSessionsByArea(jukir.AreaID, startOfDay, endOfDay)
+	sessions, err := u.sessionRepo.GetSessionsByJukir(jukirID, startOfDay, endOfDay)
 	if err != nil {
 		return nil, errors.New("failed to get sessions for date")
 	}
@@ -247,27 +265,16 @@ func (u *jukirUsecase) GetJukirByUserID(userID uint) (*entities.Jukir, error) {
 }
 
 func (u *jukirUsecase) GetVehicleBreakdown(jukirID uint) (*entities.VehicleBreakdownResponse, error) {
-	// Get jukir info
-	jukir, err := u.jukirRepo.GetByID(jukirID)
-	if err != nil {
-		return nil, errors.New("jukir not found")
-	}
-
-	// Get all sessions for this jukir's area today
+	// Get all sessions for this jukir today (includes both manual and QR input)
+	// Filter by jukir_id, not area_id - includes all session types
+	// Use current date to get sessions that check-in today (regardless of timezone)
 	now := time.Now()
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	endOfDay := startOfDay.Add(24 * time.Hour) // End of today
 
-	var sessions []entities.ParkingSession
-	areaSessions, err := u.sessionRepo.GetSessionsByArea(jukir.AreaID, startOfDay, now)
+	sessions, err := u.sessionRepo.GetSessionsByJukir(jukirID, startOfDay, endOfDay)
 	if err != nil {
 		return nil, errors.New("failed to get sessions")
-	}
-
-	// Filter by jukir ID
-	for _, s := range areaSessions {
-		if s.JukirID != nil && *s.JukirID == jukirID {
-			sessions = append(sessions, s)
-		}
 	}
 
 	// Calculate breakdown
