@@ -109,7 +109,7 @@ func (u *jukirUsecase) GetActiveSessions(jukirID uint, vehicleType *entities.Veh
 
 	// Transform to simplified active session response (only essential data)
 	var activeSessions []entities.ActiveSessionResponse
-	now := time.Now()
+	now := nowGMT7() // Use GMT+7 timezone
 	for _, session := range sessions {
 		// Filter by vehicle_type if provided
 		if vehicleType != nil && session.VehicleType != *vehicleType {

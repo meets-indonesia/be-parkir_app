@@ -2475,19 +2475,20 @@ func (u *adminUsecase) GetAreaActivityDetail(areaID uint, startTime, endTime *ti
 		return nil, errors.New("parking area not found")
 	}
 
-	// Use provided time range or default to today
+	// Use provided time range or default to today (in GMT+7)
 	var actualStart, actualEnd time.Time
 	if startTime != nil && endTime != nil {
 		actualStart = *startTime
 		actualEnd = *endTime
-		// Set start time to beginning of day
-		actualStart = time.Date(actualStart.Year(), actualStart.Month(), actualStart.Day(), 0, 0, 0, 0, actualStart.Location())
-		// Set end time to end of day
-		actualEnd = time.Date(actualEnd.Year(), actualEnd.Month(), actualEnd.Day(), 23, 59, 59, 0, actualEnd.Location())
+		// Ensure dates are in GMT+7 timezone
+		gmt7Loc := getGMT7Location()
+		actualStart = time.Date(actualStart.Year(), actualStart.Month(), actualStart.Day(), 0, 0, 0, 0, gmt7Loc)
+		actualEnd = time.Date(actualEnd.Year(), actualEnd.Month(), actualEnd.Day(), 23, 59, 59, 999999999, gmt7Loc)
 	} else {
-		now := time.Now()
-		actualStart = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-		actualEnd = time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, now.Location())
+		// Default to today in GMT+7
+		now := nowGMT7()
+		actualStart = dateGMT7(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0)
+		actualEnd = dateGMT7(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999)
 	}
 
 	// Validate date range
@@ -2522,8 +2523,13 @@ func (u *adminUsecase) GetAreaActivityDetail(areaID uint, startTime, endTime *ti
 		intervalEnd, ok2 := interval["end"].(time.Time)
 		if !ok1 || !ok2 {
 			// If interval parsing fails, create empty stats
+			dateStr := ""
+			if date, ok := interval["date"].(string); ok {
+				dateStr = date
+			}
 			mobilData[j] = map[string]interface{}{
 				"periode":       interval["label"],
+				"date":          dateStr, // Add date field for frontend filtering
 				"datang":        0,
 				"berangkat":     0,
 				"akumulasi":     0,
@@ -2532,6 +2538,7 @@ func (u *adminUsecase) GetAreaActivityDetail(areaID uint, startTime, endTime *ti
 			}
 			motorData[j] = map[string]interface{}{
 				"periode":       interval["label"],
+				"date":          dateStr, // Add date field for frontend filtering
 				"datang":        0,
 				"berangkat":     0,
 				"akumulasi":     0,
@@ -2550,26 +2557,43 @@ func (u *adminUsecase) GetAreaActivityDetail(areaID uint, startTime, endTime *ti
 		mobilStats := u.calculateIntervalStats(sessions, intervalMap, entities.VehicleTypeMobil, area.MaxMobil)
 		motorStats := u.calculateIntervalStats(sessions, intervalMap, entities.VehicleTypeMotor, area.MaxMotor)
 
-		// Ensure indeks_parkir is always present
+		// Get date from interval for adding to stats
+		dateStr := ""
+		if date, ok := interval["date"].(string); ok {
+			dateStr = date
+		} else {
+			// Fallback: extract date from interval start time
+			dateStr = intervalStart.Format("2006-01-02")
+		}
+
+		// Ensure indeks_parkir is always present and add date field
 		if mobilStats == nil {
 			mobilStats = map[string]interface{}{
 				"periode":       interval["label"],
+				"date":          dateStr,
 				"datang":        0,
 				"berangkat":     0,
 				"akumulasi":     0,
 				"volume":        0,
 				"indeks_parkir": "0%",
 			}
+		} else {
+			// Add date field to existing stats
+			mobilStats["date"] = dateStr
 		}
 		if motorStats == nil {
 			motorStats = map[string]interface{}{
 				"periode":       interval["label"],
+				"date":          dateStr,
 				"datang":        0,
 				"berangkat":     0,
 				"akumulasi":     0,
 				"volume":        0,
 				"indeks_parkir": "0%",
 			}
+		} else {
+			// Add date field to existing stats
+			motorStats["date"] = dateStr
 		}
 
 		mobilData[j] = mobilStats
@@ -2707,10 +2731,13 @@ func (u *adminUsecase) create15MinuteIntervalsWorkHours(start, end time.Time) []
 
 				// Only add interval if it's within work hours (9am-5pm)
 				if current.Hour() >= 9 && current.Hour() < 17 {
+					// Add date to interval for frontend filtering
+					dateStr := current.Format("2006-01-02")
 					intervals = append(intervals, map[string]interface{}{
 						"start": current,
 						"end":   intervalEnd,
 						"label": fmt.Sprintf("%02d.%02d - %02d.%02d", current.Hour(), current.Minute(), intervalEnd.Hour(), intervalEnd.Minute()),
+						"date":  dateStr, // Add date field for frontend filtering
 					})
 				}
 

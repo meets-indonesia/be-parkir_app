@@ -55,7 +55,7 @@ func SetupRoutes(router *gin.Engine, handlers *handler.Handlers, jwtConfig useca
 			parking.POST("/checkout", handlers.Checkout)
 			parking.GET("/active/:id", handlers.GetActiveSession)
 			parking.GET("/history", handlers.GetParkingHistory)
-			parking.GET("/history/:id", handlers.GetParkingHistoryByID)
+			parking.POST("/history", handlers.GetParkingHistoryByIDs)
 		}
 
 		// Jukir routes

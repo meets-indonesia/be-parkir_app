@@ -435,40 +435,52 @@ func (h *Handlers) GetParkingHistory(c *gin.Context) {
 	})
 }
 
-// GetParkingHistoryByID godoc
-// @Summary Get parking history by session ID
-// @Description Get single parking session by session ID (anonymous)
+// GetParkingHistoryByIDs godoc
+// @Summary Get parking history by session IDs (bulk)
+// @Description Get parking sessions by array of session IDs (anonymous, supports bulk request)
 // @Tags parking
 // @Accept json
 // @Produce json
-// @Param id path int true "Session ID"
+// @Param request body map[string][]uint true "Session IDs array" Example({"session_ids": [1, 2, 3]})
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]interface{}
-// @Failure 404 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
-// @Router /api/v1/parking/history/{id} [get]
-func (h *Handlers) GetParkingHistoryByID(c *gin.Context) {
-	idStr := c.Param("id")
-	if idStr == "" {
+// @Router /api/v1/parking/history [post]
+func (h *Handlers) GetParkingHistoryByIDs(c *gin.Context) {
+	var req struct {
+		SessionIDs []uint `json:"session_ids" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "Session ID is required",
+			"message": "Invalid request body. Expected: {\"session_ids\": [1, 2, 3]}",
+			"error":   err.Error(),
 		})
 		return
 	}
 
-	sessionID, err := strconv.ParseUint(idStr, 10, 64)
-	if err != nil || sessionID == 0 {
+	if len(req.SessionIDs) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "Invalid session ID",
+			"message": "session_ids array cannot be empty",
 		})
 		return
 	}
 
-	session, err := h.ParkingUC.GetHistoryBySession(uint(sessionID))
+	// Limit bulk requests to prevent abuse (max 100 sessions at once)
+	if len(req.SessionIDs) > 100 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Maximum 100 session IDs allowed per request",
+		})
+		return
+	}
+
+	sessions, err := h.ParkingUC.GetHistoryBySessionIDs(req.SessionIDs)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
+		h.Logger.Error("Failed to get parking history:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
 			"message": err.Error(),
 		})
@@ -479,8 +491,8 @@ func (h *Handlers) GetParkingHistoryByID(c *gin.Context) {
 		"success": true,
 		"message": "Parking history retrieved successfully",
 		"data": gin.H{
-			"sessions": []entities.ParkingSession{*session},
-			"count":    1,
+			"sessions": sessions,
+			"count":    len(sessions),
 		},
 	})
 }

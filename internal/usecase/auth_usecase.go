@@ -148,14 +148,14 @@ func (u *authUsecase) LoginJukir(username, password string) (*entities.LoginResp
 		return nil, errors.New("account is not active")
 	}
 
-	// Generate tokens
-	accessToken, refreshToken, err := u.generateTokens(user)
+	// Generate tokens - for jukir, tokens never expire
+	accessToken, refreshToken, err := u.generateTokensForJukir(user)
 	if err != nil {
 		return nil, errors.New("failed to generate tokens")
 	}
 
-	// Store refresh token in Redis
-	if err := u.storeRefreshToken(user.ID, refreshToken); err != nil {
+	// Store refresh token in Redis with very long expiry for jukir (never expires)
+	if err := u.storeRefreshTokenForJukir(user.ID, refreshToken); err != nil {
 		return nil, errors.New("failed to store refresh token")
 	}
 
@@ -299,7 +299,47 @@ func (u *authUsecase) generateTokens(user *entities.User) (string, string, error
 	return accessTokenString, refreshTokenString, nil
 }
 
+// generateTokensForJukir generates tokens without expiry (never expires) for jukir
+func (u *authUsecase) generateTokensForJukir(user *entities.User) (string, string, error) {
+	// Generate access token without expiry (no "exp" claim = never expires)
+	accessClaims := jwt.MapClaims{
+		"user_id": user.ID,
+		"email":   user.Email,
+		"role":    user.Role,
+		"type":    "access",
+		// No "exp" claim = token never expires
+	}
+
+	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
+	accessTokenString, err := accessToken.SignedString([]byte(u.jwtConfig.SecretKey))
+	if err != nil {
+		return "", "", err
+	}
+
+	// Generate refresh token without expiry (no "exp" claim = never expires)
+	refreshClaims := jwt.MapClaims{
+		"user_id": user.ID,
+		"type":    "refresh",
+		// No "exp" claim = token never expires
+	}
+
+	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)
+	refreshTokenString, err := refreshToken.SignedString([]byte(u.jwtConfig.SecretKey))
+	if err != nil {
+		return "", "", err
+	}
+
+	return accessTokenString, refreshTokenString, nil
+}
+
 func (u *authUsecase) storeRefreshToken(userID uint, token string) error {
 	ctx := context.Background()
 	return u.redis.Set(ctx, "refresh_token:"+string(rune(userID)), token, u.jwtConfig.RefreshExpiry).Err()
+}
+
+// storeRefreshTokenForJukir stores refresh token with very long expiry (effectively never expires for jukir)
+func (u *authUsecase) storeRefreshTokenForJukir(userID uint, token string) error {
+	ctx := context.Background()
+	// Store with 10 years expiry (effectively never expires for practical purposes)
+	return u.redis.Set(ctx, "refresh_token:"+string(rune(userID)), token, 10*365*24*time.Hour).Err()
 }

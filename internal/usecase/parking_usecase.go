@@ -17,6 +17,7 @@ type ParkingUsecase interface {
 	GetSessionByID(sessionID uint) (*entities.ParkingSession, error)
 	GetHistoryByPlatNomor(platNomor string, limit, offset int) (*entities.SessionHistoryResponse, error)
 	GetHistoryBySession(sessionID uint) (*entities.ParkingSession, error)
+	GetHistoryBySessionIDs(sessionIDs []uint) ([]entities.ParkingSession, error)
 	ManualCheckin(jukirID uint, req *entities.ManualCheckinRequest) (*entities.ManualCheckinResponse, error)
 	ManualCheckout(jukirID uint, req *entities.ManualCheckoutRequest) (*entities.ManualCheckoutResponse, error)
 }
@@ -94,7 +95,7 @@ func (u *parkingUsecase) Checkin(req *entities.CheckinRequest) (*entities.Checki
 		VehicleType:    req.VehicleType,
 		PlatNomor:      req.PlatNomor, // Optional for QR-based sessions
 		IsManualRecord: false,
-		CheckinTime:    time.Now(),
+		CheckinTime:    nowGMT7(), // Use GMT+7 timezone
 		PaymentStatus:  entities.PaymentStatusPending,
 		SessionStatus:  entities.SessionStatusActive,
 	}
@@ -156,7 +157,7 @@ func (u *parkingUsecase) Checkout(req *entities.CheckoutRequest) (*entities.Chec
 	}
 
 	// Calculate duration and cost (FLAT RATE, not per hour)
-	checkoutTime := time.Now()
+	checkoutTime := nowGMT7() // Use GMT+7 timezone
 	duration := int(checkoutTime.Sub(session.CheckinTime).Minutes())
 	if duration < 0 {
 		duration = 0 // Handle edge case
@@ -223,7 +224,7 @@ func (u *parkingUsecase) GetActiveSession(qrToken string) (*entities.ActiveSessi
 	}
 
 	// Calculate duration (handle negative if checkin_time is in future)
-	durationMinutes := int(time.Since(session.CheckinTime).Minutes())
+	durationMinutes := int(nowGMT7().Sub(session.CheckinTime).Minutes())
 	if durationMinutes < 0 {
 		durationMinutes = 0
 	}
@@ -250,7 +251,7 @@ func (u *parkingUsecase) GetActiveSessionByID(sessionID uint) (*entities.ActiveS
 		return nil, errors.New("no active parking session found for this session ID")
 	}
 
-	durationMinutes := int(time.Since(session.CheckinTime).Minutes())
+	durationMinutes := int(nowGMT7().Sub(session.CheckinTime).Minutes())
 	if durationMinutes < 0 {
 		durationMinutes = 0
 	}
@@ -285,6 +286,24 @@ func (u *parkingUsecase) GetHistoryBySession(sessionID uint) (*entities.ParkingS
 		return nil, errors.New("session not found")
 	}
 	return session, nil
+}
+
+func (u *parkingUsecase) GetHistoryBySessionIDs(sessionIDs []uint) ([]entities.ParkingSession, error) {
+	if len(sessionIDs) == 0 {
+		return []entities.ParkingSession{}, nil
+	}
+
+	var sessions []entities.ParkingSession
+	for _, sessionID := range sessionIDs {
+		session, err := u.sessionRepo.GetByID(sessionID)
+		if err != nil {
+			// Skip invalid session IDs, continue with others
+			continue
+		}
+		sessions = append(sessions, *session)
+	}
+
+	return sessions, nil
 }
 
 // calculateDistance calculates the distance between two coordinates using Haversine formula

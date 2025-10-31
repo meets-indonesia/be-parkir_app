@@ -15,7 +15,18 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
+// getGMT7Location returns Asia/Jakarta timezone (GMT+7)
+func getGMT7Location() *time.Location {
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		// Fallback to UTC+7 if Asia/Jakarta is not available
+		return time.FixedZone("GMT+7", 7*60*60)
+	}
+	return loc
+}
+
 // parseDateFilter parses start_date and end_date from query parameters (format: dd-mm-yyyy)
+// Returns dates in GMT+7 timezone
 func parseDateFilter(c *gin.Context) (*time.Time, *time.Time, error) {
 	startDateStr := c.Query("start_date")
 	endDateStr := c.Query("end_date")
@@ -28,18 +39,23 @@ func parseDateFilter(c *gin.Context) (*time.Time, *time.Time, error) {
 		return nil, nil, errors.New("both start_date and end_date are required")
 	}
 
-	startDate, err := time.Parse("02-01-2006", startDateStr)
+	gmt7Loc := getGMT7Location()
+
+	// Parse dates and set to GMT+7 timezone
+	startDate, err := time.ParseInLocation("02-01-2006", startDateStr, gmt7Loc)
 	if err != nil {
 		return nil, nil, errors.New("invalid start_date format. Use DD-MM-YYYY")
 	}
 
-	endDate, err := time.Parse("02-01-2006", endDateStr)
+	endDate, err := time.ParseInLocation("02-01-2006", endDateStr, gmt7Loc)
 	if err != nil {
 		return nil, nil, errors.New("invalid end_date format. Use DD-MM-YYYY")
 	}
 
-	// Set end date to end of day
-	endDate = time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 23, 59, 59, 999999999, endDate.Location())
+	// Set start date to beginning of day in GMT+7
+	startDate = time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, gmt7Loc)
+	// Set end date to end of day in GMT+7
+	endDate = time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 23, 59, 59, 999999999, gmt7Loc)
 
 	return &startDate, &endDate, nil
 }
