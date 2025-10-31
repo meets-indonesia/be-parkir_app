@@ -80,6 +80,7 @@ type ActiveSessionResponse struct {
 	SessionID   uint      `json:"session_id"`
 	CheckinTime time.Time `json:"checkin_time"`
 	Area        string    `json:"area_name"`
+	PlatNomor   *string   `json:"plat_nomor,omitempty"` // Optional - bisa null jika tidak diisi saat checkin
 	HourlyRate  float64   `json:"hourly_rate"`
 	Duration    int       `json:"duration"` // in minutes
 	CurrentCost float64   `json:"current_cost"`

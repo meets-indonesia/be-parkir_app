@@ -87,12 +87,14 @@ func (h *Handlers) GetPendingPayments(c *gin.Context) {
 
 // GetActiveSessions godoc
 // @Summary Get active sessions
-// @Description Get list of active parking sessions in jukir's area
+// @Description Get list of active parking sessions in jukir's area (optional filter by vehicle_type)
 // @Tags jukir
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param vehicle_type query string false "Filter by vehicle type: mobil or motor"
 // @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/jukir/active-sessions [get]
@@ -106,7 +108,23 @@ func (h *Handlers) GetActiveSessions(c *gin.Context) {
 		return
 	}
 
-	response, err := h.JukirUC.GetActiveSessions(jukirID.(uint))
+	// Get optional vehicle_type filter from query parameter
+	var vehicleType *entities.VehicleType
+	vehicleTypeStr := c.Query("vehicle_type")
+	if vehicleTypeStr != "" {
+		vt := entities.VehicleType(vehicleTypeStr)
+		// Validate vehicle type
+		if vt != entities.VehicleTypeMobil && vt != entities.VehicleTypeMotor {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "Invalid vehicle_type. Must be 'mobil' or 'motor'",
+			})
+			return
+		}
+		vehicleType = &vt
+	}
+
+	response, err := h.JukirUC.GetActiveSessions(jukirID.(uint), vehicleType)
 	if err != nil {
 		h.Logger.Error("Failed to get active sessions:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{

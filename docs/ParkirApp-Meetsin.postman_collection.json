@@ -1,0 +1,2130 @@
+{
+	"info": {
+		"_postman_id": "38e19a64-f19f-4e38-bfb1-af9d1fa6614c",
+		"name": "ParkirApp-Meetsin",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "24748797",
+		"_collection_link": "https://blue-meteor-542303.postman.co/workspace/My-Workspace~c8642945-6182-4ba0-84c0-701b5d0f3e71/collection/24748797-38e19a64-f19f-4e38-bfb1-af9d1fa6614c?action=share&source=collection_link&creator=24748797"
+	},
+	"item": [
+		{
+			"name": "Authantication",
+			"item": [
+				{
+					"name": "Register Admin",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "be-parkir-api-key-2025",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\" : \"admin1\",\n    \"email\" : \"admin@gmail.com\",\n    \"phone\" : \"08123456789\",\n    \"password\" : \"admin123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/register",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"register"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Login Admin",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"admin@gmail.com\",\n  \"password\": \"admin123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Module Area",
+			"item": [
+				{
+					"name": "Create Parking Area",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTczODQzNSwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.5Zwg38Sxx6INuoO8fPXCJfzRZOma76mULJHpxeX5XTY",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Parkir Sudirman\",\n  \"address\": \"Jl. Sudirman No. 1, Palembang\",\n  \"latitude\": -2.9761,\n  \"longitude\": 104.7754,\n  \"hourly_rate\": 2000,\n  \"regional\" :\"Utara\",\n  \"max_mobil\": 50,\n  \"max_motor\": 100,\n  \"status_operasional\": \"buka\",\n  \"jenis_area\": \"outdoor\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/areas",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"areas"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get All Parking Area",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTgzMzA3OSwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.KMHkMTNs0hAIqGI147NW-xZ63qKJ763VCJDAbo0erps",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/areas",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"areas"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Parking Area by Id",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTczODQzNSwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.5Zwg38Sxx6INuoO8fPXCJfzRZOma76mULJHpxeX5XTY",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/areas/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"areas",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "2"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Parking Area",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTgzMzA3OSwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.KMHkMTNs0hAIqGI147NW-xZ63qKJ763VCJDAbo0erps",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Parkir Sudirman\",\n  \"address\": \"Jl. Sudirman No. 1, Palembang\",\n  \"latitude\": -2.9761,\n  \"longitude\": 104.7754,\n  \"hourly_rate\": 2000,\n  \"regional\" :\"Barat\",\n  \"max_mobil\": 50,\n  \"max_motor\": 100,\n  \"status_operasional\": \"buka\",\n  \"jenis_area\": \"outdoor\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/areas/2",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"areas",
+								"2"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Parking Area",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTU0OTk0MSwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.1E4QkLG4WuaQVtkxjgtq4ghvQNeXHKhUB0Hflm-9-XE",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/areas/1",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"areas",
+								"1"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Transaksi per Area",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTczODQzNSwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.5Zwg38Sxx6INuoO8fPXCJfzRZOma76mULJHpxeX5XTY",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/areas/:id/transactions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"areas",
+								":id",
+								"transactions"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "2"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Module Dashboard",
+			"item": [
+				{
+					"name": "Get Statistik Kendaraan",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTczODQzNSwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.5Zwg38Sxx6INuoO8fPXCJfzRZOma76mULJHpxeX5XTY",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/statistics/vehicles",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"statistics",
+								"vehicles"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Statistik Kendaraan with Params",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTU5MzM2NSwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.F1-CUEjrIInS0BNVPDdAmjrUsinefTolGOVzxxrcezI",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/statistics/vehicles?vehicle_type=mobil&date_range=minggu_ini",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"statistics",
+								"vehicles"
+							],
+							"query": [
+								{
+									"key": "vehicle_type",
+									"value": "mobil"
+								},
+								{
+									"key": "date_range",
+									"value": "minggu_ini"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Statistik Jukir",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTU5MzM2NSwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.F1-CUEjrIInS0BNVPDdAmjrUsinefTolGOVzxxrcezI",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/statistics/jukirs",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"statistics",
+								"jukirs"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Statistik Area Parkir",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTczODQzNSwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.5Zwg38Sxx6INuoO8fPXCJfzRZOma76mULJHpxeX5XTY",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/statistics/areas",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"statistics",
+								"areas"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Tabel Jukir dengan Revenue",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTczODQzNSwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.5Zwg38Sxx6INuoO8fPXCJfzRZOma76mULJHpxeX5XTY",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/jukirs/revenue",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"jukirs",
+								"revenue"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Chart with Params",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTU5MzM2NSwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.F1-CUEjrIInS0BNVPDdAmjrUsinefTolGOVzxxrcezI",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/chart/data",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"chart",
+								"data"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Module Jukir",
+			"item": [
+				{
+					"name": "Create Jukir",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTc4NTk5Nywicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.6qqwj7226hNsnzxOIzwwBLFznafIIQq_xGcZUoz7d2M",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							},
+							{
+								"key": "",
+								"value": "",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Supriadi\",\n  \"area_id\": 3,\n  \"status\": \"active\",\n  \"phone\" : \"08123456789\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/jukirs",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"jukirs"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get All Jukir",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTgyNzI2MSwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.4kZ9v_H0tGgwUAd9F6EKiKIlUiCR7V2Nw8MSEYYBQbA",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/jukirs",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"jukirs"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Jukir by Id",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTgzMzA3OSwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.KMHkMTNs0hAIqGI147NW-xZ63qKJ763VCJDAbo0erps",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/jukirs/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"jukirs",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "6"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Jukir by Id With Params Revenue",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTU5MzM2NSwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.F1-CUEjrIInS0BNVPDdAmjrUsinefTolGOVzxxrcezI",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/jukirs/2?include_revenue= true&date_range=minggu_ini",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"jukirs",
+								"2"
+							],
+							"query": [
+								{
+									"key": "include_revenue",
+									"value": " true"
+								},
+								{
+									"key": "date_range",
+									"value": "minggu_ini"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Jukir",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTczODQzNSwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.5Zwg38Sxx6INuoO8fPXCJfzRZOma76mULJHpxeX5XTY",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Budi Sutriso\",\n  \"area_id\": 3,\n  \"status\": \"active\",\n  \"phone\" : \"08123456789\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/jukirs/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"jukirs",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "2"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Jukir",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTczODQzNSwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.5Zwg38Sxx6INuoO8fPXCJfzRZOma76mULJHpxeX5XTY",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/jukirs/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"jukirs",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": ""
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Module Mobile (Jukir)",
+			"item": [
+				{
+					"name": "Login Jukir",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTU5MzM2NSwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.F1-CUEjrIInS0BNVPDdAmjrUsinefTolGOVzxxrcezI",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\" : \"par0026\",\n    \"password\" : \"2065\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/auth/login-jukir",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"auth",
+								"login-jukir"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Manual Check-in",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6InBhcjAwMjYiLCJleHAiOjE3NjE4MjcyMTcsInJvbGUiOiJqdWtpciIsInR5cGUiOiJhY2Nlc3MiLCJ1c2VyX2lkIjoxMn0.12UsvxIXUqcSL0WaSp-n5fCRzcQp6f6458wPbxUWnSU",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"plat_nomor\": \"B1234XYZ\", // Required - License plate (1-20 characters)\n  \"vehicle_type\": \"mobil\", // Required - \"mobil\" or \"motor\"\n  \"waktu_masuk\": \"2025-10-30T10:00:00Z\" // Required - Check-in timestamp (ISO 8601)\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/jukir/manual-checkin",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"jukir",
+								"manual-checkin"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Manual Check-out (from manual input only)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6InBhcjAwMjYiLCJleHAiOjE3NjE4MjcyMTcsInJvbGUiOiJqdWtpciIsInR5cGUiOiJhY2Nlc3MiLCJ1c2VyX2lkIjoxMn0.12UsvxIXUqcSL0WaSp-n5fCRzcQp6f6458wPbxUWnSU",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"session_id\": 9, // Required - ID dari parking session yang akan di-checkout\n  \"waktu_keluar\": \"2025-10-30T12:30:00Z\" // Required - Check-out timestamp (ISO 8601)\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/jukir/manual-checkout",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"jukir",
+								"manual-checkout"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Konfirmasi Pembayaran",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTc4NTk5Nywicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.6qqwj7226hNsnzxOIzwwBLFznafIIQq_xGcZUoz7d2M",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"session_id\": 123, // Required - ID dari parking session yang sudah checkout\n  \"payment_method\": \"cash\" // Required - Payment method: \"cash\", \"qris\", \"bank_transfer\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/jukir/confirm-payment",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"jukir",
+								"confirm-payment"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get All Pending Payment",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6InBhcjAwMjYiLCJleHAiOjE3NjE4MjcyMTcsInJvbGUiOiJqdWtpciIsInR5cGUiOiJhY2Nlc3MiLCJ1c2VyX2lkIjoxMn0.12UsvxIXUqcSL0WaSp-n5fCRzcQp6f6458wPbxUWnSU",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/jukir/pending-payments",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"jukir",
+								"pending-payments"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get All Active Parking Session by Jukir Credential",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTc4NTk5Nywicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.6qqwj7226hNsnzxOIzwwBLFznafIIQq_xGcZUoz7d2M",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/jukir/active-sessions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"jukir",
+								"active-sessions"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Activity Data by Jukir Credential",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6InBhcjAwMjYiLCJleHAiOjE3NjE4MjcyMTcsInJvbGUiOiJqdWtpciIsInR5cGUiOiJhY2Nlc3MiLCJ1c2VyX2lkIjoxMn0.12UsvxIXUqcSL0WaSp-n5fCRzcQp6f6458wPbxUWnSU",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/jukir/vehicle-breakdown",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"jukir",
+								"vehicle-breakdown"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Display Jukir's QR Code",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6InBhcjAwMjYiLCJleHAiOjE3NjE4MjcyMTcsInJvbGUiOiJqdWtpciIsInR5cGUiOiJhY2Nlc3MiLCJ1c2VyX2lkIjoxMn0.12UsvxIXUqcSL0WaSp-n5fCRzcQp6f6458wPbxUWnSU",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/jukir/qr-code",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"jukir",
+								"qr-code"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Daily Reports",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6InBhcjAwMjYiLCJleHAiOjE3NjE4MjcyMTcsInJvbGUiOiJqdWtpciIsInR5cGUiOiJhY2Nlc3MiLCJ1c2VyX2lkIjoxMn0.12UsvxIXUqcSL0WaSp-n5fCRzcQp6f6458wPbxUWnSU",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/jukir/daily-report",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"jukir",
+								"daily-report"
+							],
+							"query": [
+								{
+									"key": "date",
+									"value": "2025-01-20",
+									"disabled": true
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Module Mobile (Customer)",
+			"item": [
+				{
+					"name": "Check-In",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTc4NTk5Nywicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.6qqwj7226hNsnzxOIzwwBLFznafIIQq_xGcZUoz7d2M",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"qr_token\": \"QR_PAR0026_20251030002621\", // Required - QR token dari jukir\n  \"vehicle_type\": \"mobil\", // Required - Tipe kendaraan: \"mobil\" atau \"motor\"\n  \"latitude\": -2.9761, // Optional - Latitude lokasi saat scan (untuk GPS verification)\n  \"longitude\": 104.7754 // Optional - Longitude lokasi saat scan (untuk GPS verification)\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/parking/checkin",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"parking",
+								"checkin"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Check-Out",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTc4NTk5Nywicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.6qqwj7226hNsnzxOIzwwBLFznafIIQq_xGcZUoz7d2M",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"qr_token\": \"QR_PAR0026_20251030002621\", // Required - QR token dari jukir (sama dengan saat checkin)\n  \"session_id\": 9, // Optional - Session ID (prioritas tertinggi jika diisi)\n  \"latitude\": -2.9761, // Optional - Latitude lokasi saat scan (untuk GPS verification)\n  \"longitude\": 104.7754 // Optional - Longitude lokasi saat scan (untuk GPS verification)\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/parking/checkout",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"parking",
+								"checkout"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Find Nearby Parking Area",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTc4NTk5Nywicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.6qqwj7226hNsnzxOIzwwBLFznafIIQq_xGcZUoz7d2M",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/parking/locations",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"parking",
+								"locations"
+							],
+							"query": [
+								{
+									"key": "latitude",
+									"value": "-6.200000",
+									"disabled": true
+								},
+								{
+									"key": "longitude",
+									"value": "106.816666",
+									"disabled": true
+								},
+								{
+									"key": "radius",
+									"value": "2.0",
+									"disabled": true
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Session Status by Session id",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTc4NTk5Nywicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.6qqwj7226hNsnzxOIzwwBLFznafIIQq_xGcZUoz7d2M",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/parking/active/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"parking",
+								"active",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "9"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Parking History by Session ID",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTc4NTk5Nywicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.6qqwj7226hNsnzxOIzwwBLFznafIIQq_xGcZUoz7d2M",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/parking/history/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"parking",
+								"history",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "9"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Module Monitoring Pendapatan",
+			"item": [
+				{
+					"name": "Get Revenue Total",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTczODQzNSwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.5Zwg38Sxx6INuoO8fPXCJfzRZOma76mULJHpxeX5XTY",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/revenue/total?start_date=01-01-2025&end_date=10-01-2025&regional=Barat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"revenue",
+								"total"
+							],
+							"query": [
+								{
+									"key": "start_date",
+									"value": "01-01-2025"
+								},
+								{
+									"key": "end_date",
+									"value": "10-01-2025"
+								},
+								{
+									"key": "regional",
+									"value": "Barat"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Revenue dari Setiap Area",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTczODQzNSwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.5Zwg38Sxx6INuoO8fPXCJfzRZOma76mULJHpxeX5XTY",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/revenue-table",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"revenue-table"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Revenue dari Setiap Jukir",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTc2MTAzOCwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.swlNT57-_71UarR8W5isoy6rnMiMSnvfV1YN7Ae1xok",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/jukirs/revenue",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"jukirs",
+								"revenue"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Chart Revenue",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTc2MTAzOCwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.swlNT57-_71UarR8W5isoy6rnMiMSnvfV1YN7Ae1xok",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/chart/data?start_date=01-01-2025&end_date=10-03-2025",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"chart",
+								"data"
+							],
+							"query": [
+								{
+									"key": "start_date",
+									"value": "01-01-2025"
+								},
+								{
+									"key": "end_date",
+									"value": "10-03-2025"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Export Data Revenue",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTc2MTAzOCwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.swlNT57-_71UarR8W5isoy6rnMiMSnvfV1YN7Ae1xok",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/revenue/export",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"revenue",
+								"export"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "hasil export",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTc2MTAzOCwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.swlNT57-_71UarR8W5isoy6rnMiMSnvfV1YN7Ae1xok",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/files/exports/1761733732493532258_revenue-report.xlsx",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"files",
+								"exports",
+								"1761733732493532258_revenue-report.xlsx"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Module Monitoring Aktivitas",
+			"item": [
+				{
+					"name": "Area Activity",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTc2MTAzOCwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.swlNT57-_71UarR8W5isoy6rnMiMSnvfV1YN7Ae1xok",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/areas/activity?start_date=01-01-2025&end_date=01-01-2025&regional=Barat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"areas",
+								"activity"
+							],
+							"query": [
+								{
+									"key": "start_date",
+									"value": "01-01-2025"
+								},
+								{
+									"key": "end_date",
+									"value": "01-01-2025"
+								},
+								{
+									"key": "regional",
+									"value": "Barat"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Jukir Activity",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTc2MTAzOCwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.swlNT57-_71UarR8W5isoy6rnMiMSnvfV1YN7Ae1xok",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/jukirs/activity?start_date=01-01-2025&end_date=01-01-2025&regional=Barat",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"jukirs",
+								"activity"
+							],
+							"query": [
+								{
+									"key": "start_date",
+									"value": "01-01-2025"
+								},
+								{
+									"key": "end_date",
+									"value": "01-01-2025"
+								},
+								{
+									"key": "regional",
+									"value": "Barat"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Detail Area Activity by ID",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTc4NTk5Nywicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.6qqwj7226hNsnzxOIzwwBLFznafIIQq_xGcZUoz7d2M",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/areas/2/activity?start_date=01-01-2025&end_date=01-01-2025",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"areas",
+								"2",
+								"activity"
+							],
+							"query": [
+								{
+									"key": "start_date",
+									"value": "01-01-2025"
+								},
+								{
+									"key": "end_date",
+									"value": "01-01-2025"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Detail Jukir Activity by ID",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTc4NTk5Nywicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.6qqwj7226hNsnzxOIzwwBLFznafIIQq_xGcZUoz7d2M",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/jukirs/:id/activity?start_date=01-01-2025&end_date=01-01-2025",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"jukirs",
+								":id",
+								"activity"
+							],
+							"query": [
+								{
+									"key": "start_date",
+									"value": "01-01-2025"
+								},
+								{
+									"key": "end_date",
+									"value": "01-01-2025"
+								}
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "3"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Export Area Activity by Id",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTc4NTk5Nywicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.6qqwj7226hNsnzxOIzwwBLFznafIIQq_xGcZUoz7d2M",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/areas/:id/activity/export",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"areas",
+								":id",
+								"activity",
+								"export"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "3"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Export Jukir Activity by Id",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTc4NTk5Nywicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.6qqwj7226hNsnzxOIzwwBLFznafIIQq_xGcZUoz7d2M",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-api-key",
+								"value": "{{x-api-key}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/jukirs/:id/activity/export",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"admin",
+								"jukirs",
+								":id",
+								"activity",
+								"export"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "3"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Test Health",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": ""
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "check SSE web",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTU5MzM2NSwicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.F1-CUEjrIInS0BNVPDdAmjrUsinefTolGOVzxxrcezI",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [
+					{
+						"key": "x-api-key",
+						"value": "{{x-api-key}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{base_url}}/api/v1/admin/sse-status",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"admin",
+						"sse-status"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "check SSE mobile",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/v1/jukir/events",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"jukir",
+						"events"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Check file exported",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsImV4cCI6MTc2MTc4NTk5Nywicm9sZSI6ImFkbWluIiwidHlwZSI6ImFjY2VzcyIsInVzZXJfaWQiOjd9.6qqwj7226hNsnzxOIzwwBLFznafIIQq_xGcZUoz7d2M",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [
+					{
+						"key": "x-api-key",
+						"value": "{{x-api-key}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{base_url}}/api/v1/admin/files/exports/activity/1761745124294221466_jukir-activity-detail-3.xlsx",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"admin",
+						"files",
+						"exports",
+						"activity",
+						"1761745124294221466_jukir-activity-detail-3.xlsx"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

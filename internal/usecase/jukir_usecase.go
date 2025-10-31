@@ -10,7 +10,7 @@ import (
 type JukirUsecase interface {
 	GetDashboard(jukirID uint) (*entities.JukirDashboardResponse, error)
 	GetPendingPayments(jukirID uint) ([]entities.PendingPaymentResponse, error)
-	GetActiveSessions(jukirID uint) ([]entities.ActiveSessionResponse, error)
+	GetActiveSessions(jukirID uint, vehicleType *entities.VehicleType) ([]entities.ActiveSessionResponse, error)
 	ConfirmPayment(jukirID uint, req *entities.ConfirmPaymentRequest) (*entities.ConfirmPaymentResponse, error)
 	GetQRCode(jukirID uint) (*entities.JukirQRResponse, error)
 	GetDailyReport(jukirID uint, date time.Time) (*entities.DailyReportResponse, error)
@@ -100,7 +100,7 @@ func (u *jukirUsecase) GetPendingPayments(jukirID uint) ([]entities.PendingPayme
 	return pendingPayments, nil
 }
 
-func (u *jukirUsecase) GetActiveSessions(jukirID uint) ([]entities.ActiveSessionResponse, error) {
+func (u *jukirUsecase) GetActiveSessions(jukirID uint, vehicleType *entities.VehicleType) ([]entities.ActiveSessionResponse, error) {
 	// Get all active sessions for this jukir (includes both manual and QR input)
 	sessions, err := u.sessionRepo.GetJukirActiveSessions(jukirID)
 	if err != nil {
@@ -111,6 +111,11 @@ func (u *jukirUsecase) GetActiveSessions(jukirID uint) ([]entities.ActiveSession
 	var activeSessions []entities.ActiveSessionResponse
 	now := time.Now()
 	for _, session := range sessions {
+		// Filter by vehicle_type if provided
+		if vehicleType != nil && session.VehicleType != *vehicleType {
+			continue
+		}
+
 		// Calculate duration (handle negative if checkin_time is in future)
 		durationMinutes := int(now.Sub(session.CheckinTime).Minutes())
 		if durationMinutes < 0 {
@@ -128,6 +133,7 @@ func (u *jukirUsecase) GetActiveSessions(jukirID uint) ([]entities.ActiveSession
 			SessionID:   session.ID,
 			CheckinTime: session.CheckinTime,
 			Area:        session.Area.Name,
+			PlatNomor:   session.PlatNomor,       // Include plat_nomor in response
 			HourlyRate:  session.Area.HourlyRate, // Ini adalah flat rate
 			Duration:    durationMinutes,
 			CurrentCost: currentCost, // Flat rate, tidak per jam
