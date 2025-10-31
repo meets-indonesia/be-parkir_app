@@ -2833,17 +2833,20 @@ func (u *adminUsecase) calculateIntervalStats(sessions []entities.ParkingSession
 // GetJukirActivity returns activity monitoring data for jukir
 // Simple format: total masuk (checkin) and keluar (checkout) per jukir
 func (u *adminUsecase) GetJukirActivity(startTime, endTime *time.Time, jukirID *uint, regional *string) (map[string]interface{}, error) {
-	// Use provided time range or default to today
+	// Use provided time range or default to today (in GMT+7)
 	var actualStart, actualEnd time.Time
 	if startTime != nil && endTime != nil {
 		actualStart = *startTime
 		actualEnd = *endTime
-		// Set end time to end of day
-		actualEnd = time.Date(actualEnd.Year(), actualEnd.Month(), actualEnd.Day(), 23, 59, 59, 0, actualEnd.Location())
+		// Ensure dates are in GMT+7 timezone
+		gmt7Loc := getGMT7Location()
+		actualStart = time.Date(actualStart.Year(), actualStart.Month(), actualStart.Day(), 0, 0, 0, 0, gmt7Loc)
+		actualEnd = time.Date(actualEnd.Year(), actualEnd.Month(), actualEnd.Day(), 23, 59, 59, 999999999, gmt7Loc)
 	} else {
-		now := time.Now()
-		actualStart = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-		actualEnd = time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, now.Location())
+		// Default to today in GMT+7
+		now := nowGMT7()
+		actualStart = dateGMT7(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0)
+		actualEnd = dateGMT7(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999)
 	}
 
 	// Get jukirs to monitor
@@ -2909,12 +2912,16 @@ func (u *adminUsecase) GetJukirActivity(startTime, endTime *time.Time, jukirID *
 			}
 		}
 
+		// Add date field for frontend filtering (use start date as reference)
+		dateStr := actualStart.Format("2006-01-02")
+
 		result = append(result, map[string]interface{}{
 			"jukir_id":   jukir.ID,
 			"jukir_name": jukir.User.Name,
 			"area_id":    jukir.Area.ID,
 			"area_name":  jukir.Area.Name,
 			"regional":   jukir.Area.Regional,
+			"date":       dateStr, // Add date field for frontend filtering
 			"mobil": map[string]interface{}{
 				"masuk":  mobilMasuk,
 				"keluar": mobilKeluar,
@@ -2947,19 +2954,20 @@ func (u *adminUsecase) GetJukirActivityDetail(jukirID uint, startTime, endTime *
 		return nil, errors.New("jukir not found")
 	}
 
-	// Use provided time range or default to today
+	// Use provided time range or default to today (in GMT+7)
 	var actualStart, actualEnd time.Time
 	if startTime != nil && endTime != nil {
 		actualStart = *startTime
 		actualEnd = *endTime
-		// Set start time to beginning of day
-		actualStart = time.Date(actualStart.Year(), actualStart.Month(), actualStart.Day(), 0, 0, 0, 0, actualStart.Location())
-		// Set end time to end of day
-		actualEnd = time.Date(actualEnd.Year(), actualEnd.Month(), actualEnd.Day(), 23, 59, 59, 0, actualEnd.Location())
+		// Ensure dates are in GMT+7 timezone
+		gmt7Loc := getGMT7Location()
+		actualStart = time.Date(actualStart.Year(), actualStart.Month(), actualStart.Day(), 0, 0, 0, 0, gmt7Loc)
+		actualEnd = time.Date(actualEnd.Year(), actualEnd.Month(), actualEnd.Day(), 23, 59, 59, 999999999, gmt7Loc)
 	} else {
-		now := time.Now()
-		actualStart = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-		actualEnd = time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, now.Location())
+		// Default to today in GMT+7
+		now := nowGMT7()
+		actualStart = dateGMT7(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0)
+		actualEnd = dateGMT7(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999)
 	}
 
 	// Validate date range
@@ -3001,6 +3009,29 @@ func (u *adminUsecase) GetJukirActivityDetail(jukirID uint, startTime, endTime *
 		intervalStart, ok1 := interval["start"].(time.Time)
 		intervalEnd, ok2 := interval["end"].(time.Time)
 		if !ok1 || !ok2 {
+			// If interval parsing fails, create empty stats
+			dateStr := ""
+			if date, ok := interval["date"].(string); ok {
+				dateStr = date
+			}
+			mobilData[j] = map[string]interface{}{
+				"periode":       interval["label"],
+				"date":          dateStr, // Add date field for frontend filtering
+				"datang":        0,
+				"berangkat":     0,
+				"akumulasi":     0,
+				"volume":        0,
+				"indeks_parkir": "0%",
+			}
+			motorData[j] = map[string]interface{}{
+				"periode":       interval["label"],
+				"date":          dateStr, // Add date field for frontend filtering
+				"datang":        0,
+				"berangkat":     0,
+				"akumulasi":     0,
+				"volume":        0,
+				"indeks_parkir": "0%",
+			}
 			continue
 		}
 
@@ -3012,6 +3043,45 @@ func (u *adminUsecase) GetJukirActivityDetail(jukirID uint, startTime, endTime *
 
 		mobilStats := u.calculateIntervalStats(sessions, intervalMap, entities.VehicleTypeMobil, jukir.Area.MaxMobil)
 		motorStats := u.calculateIntervalStats(sessions, intervalMap, entities.VehicleTypeMotor, jukir.Area.MaxMotor)
+
+		// Get date from interval for adding to stats
+		dateStr := ""
+		if date, ok := interval["date"].(string); ok {
+			dateStr = date
+		} else {
+			// Fallback: extract date from interval start time
+			dateStr = intervalStart.Format("2006-01-02")
+		}
+
+		// Ensure indeks_parkir is always present and add date field
+		if mobilStats == nil {
+			mobilStats = map[string]interface{}{
+				"periode":       interval["label"],
+				"date":          dateStr,
+				"datang":        0,
+				"berangkat":     0,
+				"akumulasi":     0,
+				"volume":        0,
+				"indeks_parkir": "0%",
+			}
+		} else {
+			// Add date field to existing stats
+			mobilStats["date"] = dateStr
+		}
+		if motorStats == nil {
+			motorStats = map[string]interface{}{
+				"periode":       interval["label"],
+				"date":          dateStr,
+				"datang":        0,
+				"berangkat":     0,
+				"akumulasi":     0,
+				"volume":        0,
+				"indeks_parkir": "0%",
+			}
+		} else {
+			// Add date field to existing stats
+			motorStats["date"] = dateStr
+		}
 
 		mobilData[j] = mobilStats
 		motorData[j] = motorStats
