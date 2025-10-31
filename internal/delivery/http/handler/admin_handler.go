@@ -100,13 +100,14 @@ func (h *Handlers) GetAdminOverview(c *gin.Context) {
 
 // GetJukirs godoc
 // @Summary Get all jukirs
-// @Description Get list of all jukirs with pagination
+// @Description Get list of all jukirs with pagination (optional filter by regional)
 // @Tags admin
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param limit query int false "Limit" default(10)
 // @Param offset query int false "Offset" default(0)
+// @Param regional query string false "Filter by regional"
 // @Success 200 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
@@ -203,6 +204,7 @@ func (h *Handlers) GetJukirs(c *gin.Context) {
 				"offset": offset,
 				"total":  count,
 			},
+			"regional": regional,
 		},
 	})
 }
@@ -702,17 +704,25 @@ func (h *Handlers) CreateParkingArea(c *gin.Context) {
 
 // GetParkingAreas godoc
 // @Summary Get all parking areas with status
-// @Description Get list of all parking areas for admin area-parkir menu
+// @Description Get list of all parking areas for admin area-parkir menu (optional filter by regional)
 // @Tags admin
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param regional query string false "Filter by regional"
 // @Success 200 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/admin/areas [get]
 func (h *Handlers) GetParkingAreas(c *gin.Context) {
-	response, err := h.AdminUC.GetParkingAreas()
+	regional := c.Query("regional")
+
+	var regionalPtr *string
+	if regional != "" {
+		regionalPtr = &regional
+	}
+
+	response, err := h.AdminUC.GetParkingAreas(regionalPtr)
 	if err != nil {
 		h.Logger.Error("Failed to get parking areas:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -814,7 +824,7 @@ func (h *Handlers) GetParkingAreaStatus(c *gin.Context) {
 
 // GetAreaTransactions godoc
 // @Summary Get area transactions
-// @Description Get transaction details by parking area
+// @Description Get transaction details by parking area (optional filter by date range)
 // @Tags admin
 // @Accept json
 // @Produce json
@@ -822,6 +832,8 @@ func (h *Handlers) GetParkingAreaStatus(c *gin.Context) {
 // @Param id path int true "Area ID"
 // @Param limit query int false "Limit" default(10)
 // @Param offset query int false "Offset" default(0)
+// @Param start_date query string false "Start date (DD-MM-YYYY)"
+// @Param end_date query string false "End date (DD-MM-YYYY)"
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]interface{}
 // @Failure 401 {object} map[string]interface{}
@@ -844,7 +856,17 @@ func (h *Handlers) GetAreaTransactions(c *gin.Context) {
 	limit, _ := strconv.Atoi(limitStr)
 	offset, _ := strconv.Atoi(offsetStr)
 
-	response, count, err := h.AdminUC.GetAreaTransactions(uint(areaID), limit, offset)
+	// Parse date filter
+	startTime, endTime, err := parseDateFilter(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	response, count, err := h.AdminUC.GetAreaTransactions(uint(areaID), limit, offset, startTime, endTime)
 	if err != nil {
 		h.Logger.Error("Failed to get area transactions:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -864,6 +886,8 @@ func (h *Handlers) GetAreaTransactions(c *gin.Context) {
 				"offset": offset,
 				"total":  count,
 			},
+			"start_date": c.Query("start_date"),
+			"end_date":   c.Query("end_date"),
 		},
 	})
 }

@@ -29,10 +29,10 @@ type AdminUsecase interface {
 	GetJukirStatistics(regional *string) (map[string]interface{}, error)
 	GetAllJukirsRevenue(startTime, endTime *time.Time, regional *string) ([]entities.JukirRevenueResponse, error)
 	AddManualRevenue(req *entities.JukirRevenueRequest) (*entities.JukirRevenueResponse, error)
-	GetParkingAreas() ([]map[string]interface{}, error)
+	GetParkingAreas(regional *string) ([]map[string]interface{}, error)
 	GetParkingAreaDetail(areaID uint) (map[string]interface{}, error)
 	GetParkingAreaStatus(areaID uint) (map[string]interface{}, error)
-	GetAreaTransactions(areaID uint, limit, offset int) ([]map[string]interface{}, int64, error)
+	GetAreaTransactions(areaID uint, limit, offset int, startTime, endTime *time.Time) ([]map[string]interface{}, int64, error)
 	GetRevenueTable(limit, offset int, areaID *uint, startTime, endTime *time.Time, regional *string) ([]map[string]interface{}, int64, error)
 	CreateJukir(req *entities.CreateJukirRequest) (*entities.CreateJukirResponse, error)
 	UpdateJukirStatus(jukirID uint, req *entities.UpdateJukirRequest) (*entities.Jukir, error)
@@ -1538,11 +1538,22 @@ func (u *adminUsecase) DeleteParkingArea(areaID uint) error {
 	return nil
 }
 
-func (u *adminUsecase) GetParkingAreas() ([]map[string]interface{}, error) {
+func (u *adminUsecase) GetParkingAreas(regional *string) ([]map[string]interface{}, error) {
 	// Get all areas using List without limit/offset to get all areas with status
 	areas, _, err := u.areaRepo.List(1000, 0) // Large limit to get all
 	if err != nil {
 		return nil, errors.New("failed to get parking areas")
+	}
+
+	// Filter by regional if specified
+	if regional != nil && *regional != "" {
+		filteredAreas := []entities.ParkingArea{}
+		for _, area := range areas {
+			if area.Regional == *regional {
+				filteredAreas = append(filteredAreas, area)
+			}
+		}
+		areas = filteredAreas
 	}
 
 	// Build response with jukirs data for each area
@@ -1752,12 +1763,21 @@ func (u *adminUsecase) GetParkingAreaStatus(areaID uint) (map[string]interface{}
 	}, nil
 }
 
-func (u *adminUsecase) GetAreaTransactions(areaID uint, limit, offset int) ([]map[string]interface{}, int64, error) {
-	// Get sessions for this area
-	now := time.Now()
-	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+func (u *adminUsecase) GetAreaTransactions(areaID uint, limit, offset int, startTime, endTime *time.Time) ([]map[string]interface{}, int64, error) {
+	// Determine date range - use provided dates or default to today
+	var startDate, endDate time.Time
+	if startTime != nil && endTime != nil {
+		startDate = *startTime
+		// Set end date to end of day (23:59:59.999999999)
+		endDate = time.Date(endTime.Year(), endTime.Month(), endTime.Day(), 23, 59, 59, 999999999, endTime.Location())
+	} else {
+		// Default to today if no date filter provided
+		now := time.Now()
+		startDate = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		endDate = now
+	}
 
-	sessions, err := u.sessionRepo.GetSessionsByArea(areaID, startOfDay, now)
+	sessions, err := u.sessionRepo.GetSessionsByArea(areaID, startDate, endDate)
 	if err != nil {
 		return nil, 0, errors.New("failed to get sessions")
 	}
