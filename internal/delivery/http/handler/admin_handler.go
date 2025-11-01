@@ -2358,3 +2358,68 @@ func (h *Handlers) GetJukirsWithRevenue(c *gin.Context) {
 		},
 	})
 }
+
+// ImportAreasAndJukirsFromCSV godoc
+// @Summary Import parking areas and jukirs from CSV
+// @Description Import parking areas and jukirs from CSV file (format: FOLMULIR TITIK PARKIR)
+// @Tags admin
+// @Accept multipart/form-data
+// @Produce json
+// @Security BearerAuth
+// @Param file formData file true "CSV file to import"
+// @Param regional formData string true "Regional (Barat, Utara, Selatan, Timur)"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/import/areas-jukirs [post]
+func (h *Handlers) ImportAreasAndJukirsFromCSV(c *gin.Context) {
+	if err := c.Request.ParseMultipartForm(10 << 20); err != nil {
+		h.Logger.Error("Failed to parse multipart form:", err)
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid form data"})
+		return
+	}
+
+	regional := c.PostForm("regional")
+	if regional == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Regional is required"})
+		return
+	}
+
+	validRegionals := []string{"Barat", "Utara", "Selatan", "Timur"}
+	valid := false
+	for _, r := range validRegionals {
+		if r == regional {
+			valid = true
+			break
+		}
+	}
+	if !valid {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid regional. Must be one of: Barat, Utara, Selatan, Timur"})
+		return
+	}
+
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		h.Logger.Error("Failed to get file:", err)
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "File is required"})
+		return
+	}
+
+	file, err := fileHeader.Open()
+	if err != nil {
+		h.Logger.Error("Failed to open file:", err)
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Failed to open file"})
+		return
+	}
+	defer file.Close()
+
+	result, err := h.AdminUC.ImportAreasAndJukirsFromCSV(file, regional)
+	if err != nil {
+		h.Logger.Error("Failed to import CSV:", err)
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "CSV imported successfully", "data": result})
+}

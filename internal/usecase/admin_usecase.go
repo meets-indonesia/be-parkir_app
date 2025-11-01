@@ -4,9 +4,12 @@ import (
 	"be-parkir/internal/domain/entities"
 	"be-parkir/internal/repository"
 	"bytes"
+	"encoding/csv"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand"
+	"strconv"
 	"strings"
 	"time"
 
@@ -51,6 +54,7 @@ type AdminUsecase interface {
 	ExportJukirActivityCSV(startTime, endTime *time.Time, jukirID *uint, regional *string) (*bytes.Buffer, error)
 	ExportAreaActivityDetailXLSX(areaID uint, startTime, endTime *time.Time) (*bytes.Buffer, error)
 	ExportJukirActivityDetailXLSX(jukirID uint, startTime, endTime *time.Time) (*bytes.Buffer, error)
+	ImportAreasAndJukirsFromCSV(reader io.Reader, regional string) (map[string]interface{}, error)
 }
 
 type adminUsecase struct {
@@ -531,12 +535,13 @@ func (u *adminUsecase) CreateJukir(req *entities.CreateJukirRequest) (*entities.
 
 	// Create user with role jukir
 	user := &entities.User{
-		Name:     req.Name,
-		Email:    email,
-		Phone:    req.Phone,
-		Password: string(hashedPassword),
-		Role:     entities.RoleJukir,
-		Status:   entities.UserStatusActive,
+		Name:            req.Name,
+		Email:           email,
+		Phone:           req.Phone,
+		Password:        string(hashedPassword),
+		DisplayPassword: &password, // Store password for display
+		Role:            entities.RoleJukir,
+		Status:          entities.UserStatusActive,
 	}
 
 	if err := u.userRepo.Create(user); err != nil {
@@ -579,11 +584,33 @@ func (u *adminUsecase) CreateJukir(req *entities.CreateJukirRequest) (*entities.
 }
 
 // generateJukirCode generates a unique jukir code based on area and timestamp
+// Only uses letters and numbers (A-Z, 0-9)
 func generateJukirCode(areaName string, timestamp time.Time) string {
-	// Get first 3 letters of area name, uppercase
-	areaPrefix := strings.ToUpper(areaName[:min(3, len(areaName))])
-	// Get last 4 digits of timestamp
+	// Filter area name to only letters and numbers, then get first 3 characters
+	var cleanAreaName strings.Builder
+	for _, char := range areaName {
+		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') {
+			cleanAreaName.WriteRune(char)
+		}
+	}
+
+	cleaned := cleanAreaName.String()
+	if len(cleaned) == 0 {
+		cleaned = "PAR" // Default prefix if no valid characters
+	}
+
+	// Get first 3 characters, uppercase, pad with numbers if needed
+	areaPrefix := strings.ToUpper(cleaned[:min(3, len(cleaned))])
+	if len(areaPrefix) < 3 {
+		// Pad with numbers if less than 3 characters
+		for len(areaPrefix) < 3 {
+			areaPrefix += fmt.Sprintf("%d", rand.Intn(10))
+		}
+	}
+
+	// Get last 4 digits of timestamp (HHMM format)
 	timeSuffix := timestamp.Format("1504") // HHMM format
+
 	return areaPrefix + timeSuffix
 }
 
@@ -3506,4 +3533,214 @@ func (u *adminUsecase) ExportJukirActivityDetailXLSX(jukirID uint, startTime, en
 	}
 
 	return &buf, nil
+}
+
+// ImportAreasAndJukirsFromCSV imports parking areas and jukirs from CSV file
+func (u *adminUsecase) ImportAreasAndJukirsFromCSV(reader io.Reader, regional string) (map[string]interface{}, error) {
+	csvReader := csv.NewReader(reader)
+	csvReader.Comma = ','
+	csvReader.LazyQuotes = true
+	csvReader.TrimLeadingSpace = true
+
+	headers, err := csvReader.Read()
+	if err != nil {
+		return nil, errors.New("failed to read CSV header")
+	}
+
+	colMap := make(map[string]int)
+	for i, h := range headers {
+		colMap[strings.TrimSpace(h)] = i
+	}
+
+	requiredCols := []string{"NAMA JUKIR", "LOKASI PARKIR", "SEGMENTASI", "LATITUDINAL", "LONGITUDINAL"}
+	for _, col := range requiredCols {
+		if _, exists := colMap[col]; !exists {
+			return nil, fmt.Errorf("required column missing: %s", col)
+		}
+	}
+
+	areaMap := make(map[string]*entities.ParkingArea)
+	var createdAreas []*entities.ParkingArea
+	var createdJukirs []*entities.Jukir
+	var errorList []string
+
+	rowNum := 1
+	for {
+		rowNum++
+		record, err := csvReader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			errorList = append(errorList, fmt.Sprintf("Row %d: %v", rowNum, err))
+			continue
+		}
+
+		if len(record) < len(headers) {
+			errorList = append(errorList, fmt.Sprintf("Row %d: insufficient columns", rowNum))
+			continue
+		}
+
+		namaJukir := strings.TrimSpace(getColumnValue(record, colMap, "NAMA JUKIR"))
+		lokasiParkir := strings.TrimSpace(getColumnValue(record, colMap, "LOKASI PARKIR"))
+		segmentasi := strings.TrimSpace(getColumnValue(record, colMap, "SEGMENTASI"))
+		latStr := strings.TrimSpace(getColumnValue(record, colMap, "LATITUDINAL"))
+		lngStr := strings.TrimSpace(getColumnValue(record, colMap, "LONGITUDINAL"))
+		fotoDokumentasi := strings.TrimSpace(getColumnValue(record, colMap, "FOTO DOKUMENTASI"))
+		srpMotorStr := strings.TrimSpace(getColumnValue(record, colMap, "SRP MOTOR"))
+		srpMobilStr := strings.TrimSpace(getColumnValue(record, colMap, "SRP MOBIL"))
+
+		if namaJukir == "" || lokasiParkir == "" || segmentasi == "" || latStr == "" || lngStr == "" {
+			errorList = append(errorList, fmt.Sprintf("Row %d: missing required fields", rowNum))
+			continue
+		}
+
+		latStr = strings.ReplaceAll(latStr, ".", "")
+		if len(latStr) > 2 {
+			latStr = latStr[:2] + "." + latStr[2:]
+		}
+		lngStr = strings.ReplaceAll(lngStr, ".", "")
+		if strings.HasPrefix(lngStr, "1") && len(lngStr) > 6 {
+			lngStr = lngStr[:3] + "." + lngStr[3:]
+		} else if len(lngStr) > 3 {
+			lngStr = lngStr[:3] + "." + lngStr[3:]
+		}
+
+		latitude, err := strconv.ParseFloat(latStr, 64)
+		if err != nil {
+			errorList = append(errorList, fmt.Sprintf("Row %d: invalid latitude", rowNum))
+			continue
+		}
+
+		longitude, err := strconv.ParseFloat(lngStr, 64)
+		if err != nil {
+			errorList = append(errorList, fmt.Sprintf("Row %d: invalid longitude", rowNum))
+			continue
+		}
+
+		hourlyRate := 2000.0
+		if srpMobilStr != "" {
+			if rate, err := strconv.ParseFloat(strings.ReplaceAll(srpMobilStr, ",", "."), 64); err == nil {
+				hourlyRate = rate
+			}
+		} else if srpMotorStr != "" {
+			if rate, err := strconv.ParseFloat(strings.ReplaceAll(srpMotorStr, ",", "."), 64); err == nil {
+				hourlyRate = rate
+			}
+		}
+
+		area, exists := areaMap[segmentasi]
+		if !exists {
+			allAreas, _, err := u.areaRepo.List(1000, 0)
+			if err == nil {
+				for i := range allAreas {
+					if allAreas[i].Name == segmentasi && allAreas[i].Regional == regional {
+						area = &allAreas[i]
+						areaMap[segmentasi] = area
+						break
+					}
+				}
+			}
+
+			if area == nil {
+				areaName := segmentasi
+				if areaName == "" {
+					areaName = lokasiParkir
+				}
+
+				area = &entities.ParkingArea{
+					Name:              areaName,
+					Address:           lokasiParkir,
+					Latitude:          latitude,
+					Longitude:         longitude,
+					Regional:          regional,
+					HourlyRate:        hourlyRate,
+					Status:            entities.AreaStatusActive,
+					StatusOperasional: "buka",
+					JenisArea:         entities.JenisAreaOutdoor,
+				}
+
+				if fotoDokumentasi != "" {
+					if strings.Contains(fotoDokumentasi, ",") {
+						urls := strings.Split(fotoDokumentasi, ",")
+						fotoDokumentasi = strings.TrimSpace(urls[0])
+					}
+					area.Image = &fotoDokumentasi
+				}
+
+				if err := u.areaRepo.Create(area); err != nil {
+					errorList = append(errorList, fmt.Sprintf("Row %d: failed to create area", rowNum))
+					continue
+				}
+
+				createdAreas = append(createdAreas, area)
+				areaMap[segmentasi] = area
+			}
+		}
+
+		// Generate jukir code first (email will be same as jukir_code)
+		jukirCode := generateJukirCode(area.Name, time.Now())
+		for i := 0; i < 10; i++ {
+			_, err = u.jukirRepo.GetByJukirCode(jukirCode)
+			if err != nil {
+				break
+			}
+			jukirCode = generateJukirCode(area.Name, time.Now())
+		}
+
+		// Email is same as jukir_code (lowercase)
+		email := strings.ToLower(jukirCode)
+		password := generateSimplePassword(4)
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			errorList = append(errorList, fmt.Sprintf("Row %d: failed to hash password", rowNum))
+			continue
+		}
+
+		user := &entities.User{
+			Name:            namaJukir,
+			Email:           email,
+			Phone:           "",
+			Password:        string(hashedPassword),
+			DisplayPassword: &password, // Store password for display
+			Role:            entities.RoleJukir,
+			Status:          entities.UserStatusActive,
+		}
+
+		if err := u.userRepo.Create(user); err != nil {
+			errorList = append(errorList, fmt.Sprintf("Row %d: failed to create user", rowNum))
+			continue
+		}
+
+		qrToken := "QR_" + jukirCode + "_" + time.Now().Format("20060102150405")
+		jukir := &entities.Jukir{
+			UserID:    user.ID,
+			JukirCode: jukirCode,
+			AreaID:    area.ID,
+			QRToken:   qrToken,
+			Status:    entities.JukirStatusActive,
+		}
+
+		if err := u.jukirRepo.Create(jukir); err != nil {
+			u.userRepo.Delete(user.ID)
+			errorList = append(errorList, fmt.Sprintf("Row %d: failed to create jukir", rowNum))
+			continue
+		}
+
+		createdJukirs = append(createdJukirs, jukir)
+	}
+
+	return map[string]interface{}{
+		"areas_created":  len(createdAreas),
+		"jukirs_created": len(createdJukirs),
+		"errors":         errorList,
+		"total_rows":     rowNum - 1,
+	}, nil
+}
+
+func getColumnValue(record []string, colMap map[string]int, colName string) string {
+	if idx, exists := colMap[colName]; exists && idx < len(record) {
+		return record[idx]
+	}
+	return ""
 }

@@ -23,16 +23,17 @@ const (
 )
 
 type User struct {
-	ID        uint           `json:"id" gorm:"primaryKey"`
-	Name      string         `json:"name" gorm:"not null" validate:"required,min=2,max=100"`
-	Email     string         `json:"email" gorm:"uniqueIndex;not null" validate:"required,email"`
-	Phone     string         `json:"phone" gorm:"not null" validate:"required,min=10,max=15"`
-	Password  string         `json:"-" gorm:"not null"`
-	Role      UserRole       `json:"role" gorm:"type:varchar(20);not null;default:'customer'" validate:"required,oneof=customer jukir admin"`
-	Status    UserStatus     `json:"status" gorm:"type:varchar(20);not null;default:'active'" validate:"required,oneof=active inactive pending"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
+	ID              uint           `json:"id" gorm:"primaryKey"`
+	Name            string         `json:"name" gorm:"not null" validate:"required,min=2,max=100"`
+	Email           string         `json:"email" gorm:"uniqueIndex;not null" validate:"required,email"`
+	Phone           string         `json:"phone" gorm:"not null" validate:"required,min=10,max=15"`
+	Password        string         `json:"-" gorm:"not null"`
+	DisplayPassword *string        `json:"display_password,omitempty" gorm:"type:varchar(20)"` // For jukir password display
+	Role            UserRole       `json:"role" gorm:"type:varchar(20);not null;default:'customer'" validate:"required,oneof=customer jukir admin"`
+	Status          UserStatus     `json:"status" gorm:"type:varchar(20);not null;default:'active'" validate:"required,oneof=active inactive pending"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
 
 	// Relations
 	JukirProfile *Jukir `json:"jukir_profile,omitempty" gorm:"foreignKey:UserID"`

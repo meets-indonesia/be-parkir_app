@@ -47,6 +47,11 @@ docker-up:
 	@echo "Starting services with Docker Compose..."
 	docker-compose up -d
 
+# Rebuild and start services (useful after code changes)
+docker-rebuild:
+	@echo "Rebuilding and starting services..."
+	docker-compose up -d --build --force-recreate
+
 # Start services with Docker Compose (production)
 docker-up-prod:
 	@echo "Starting services with Docker Compose (production)..."
@@ -56,6 +61,19 @@ docker-up-prod:
 docker-down:
 	@echo "Stopping services with Docker Compose..."
 	docker-compose down
+
+# Stop services and remove volumes (WARNING: This will delete all data!)
+docker-down-volumes:
+	@echo "Stopping services and removing volumes (ALL DATA WILL BE DELETED)..."
+	docker-compose down -v
+
+# Reset everything: remove containers, volumes, and images
+docker-reset:
+	@echo "⚠️  WARNING: This will delete ALL data including database, redis, and minio storage!"
+	@echo "Resetting Docker environment..."
+	docker-compose down -v --remove-orphans
+	docker-compose rm -f
+	@echo "Cleanup complete. You can now rebuild with 'make docker-up'"
 
 # Stop services with Docker Compose (production)
 docker-down-prod:

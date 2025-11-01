@@ -88,6 +88,13 @@ func (u *parkingUsecase) Checkin(req *entities.CheckinRequest) (*entities.Checki
 		}
 	}
 
+	// Validate checkin time: max 5pm (17:00)
+	checkinTime := nowGMT7()
+	checkinHour := checkinTime.Hour()
+	if checkinHour >= 17 {
+		return nil, errors.New("check-in is only allowed until 5pm (17:00)")
+	}
+
 	// Create parking session
 	session := &entities.ParkingSession{
 		JukirID:        &jukir.ID,
@@ -95,7 +102,7 @@ func (u *parkingUsecase) Checkin(req *entities.CheckinRequest) (*entities.Checki
 		VehicleType:    req.VehicleType,
 		PlatNomor:      req.PlatNomor, // Optional for QR-based sessions
 		IsManualRecord: false,
-		CheckinTime:    nowGMT7(), // Use GMT+7 timezone
+		CheckinTime:    checkinTime, // Use GMT+7 timezone
 		PaymentStatus:  entities.PaymentStatusPending,
 		SessionStatus:  entities.SessionStatusActive,
 	}
@@ -339,6 +346,15 @@ func (u *parkingUsecase) ManualCheckin(jukirID uint, req *entities.ManualCheckin
 		return nil, errors.New("jukir is not active")
 	}
 
+	// Validate checkin time: max 5pm (17:00)
+	// Ensure waktu_masuk is in GMT+7 timezone
+	gmt7Loc := getGMT7Location()
+	checkinTime := req.WaktuMasuk.In(gmt7Loc)
+	checkinHour := checkinTime.Hour()
+	if checkinHour >= 17 {
+		return nil, errors.New("check-in is only allowed until 5pm (17:00)")
+	}
+
 	// Create manual parking session
 	session := &entities.ParkingSession{
 		JukirID:        &jukir.ID,
@@ -346,7 +362,7 @@ func (u *parkingUsecase) ManualCheckin(jukirID uint, req *entities.ManualCheckin
 		VehicleType:    req.VehicleType,
 		PlatNomor:      &req.PlatNomor,
 		IsManualRecord: true,
-		CheckinTime:    req.WaktuMasuk,
+		CheckinTime:    checkinTime,
 		PaymentStatus:  entities.PaymentStatusPending,
 		SessionStatus:  entities.SessionStatusActive,
 	}
