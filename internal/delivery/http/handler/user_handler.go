@@ -447,6 +447,15 @@ func (h *Handlers) GetParkingHistory(c *gin.Context) {
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/parking/history [post]
 func (h *Handlers) GetParkingHistoryByIDs(c *gin.Context) {
+	// Ensure this is a POST request
+	if c.Request.Method != http.MethodPost {
+		c.JSON(http.StatusMethodNotAllowed, gin.H{
+			"success": false,
+			"message": "Method not allowed. Use POST for bulk session history request.",
+		})
+		return
+	}
+
 	var req struct {
 		SessionIDs []uint `json:"session_ids" binding:"required"`
 	}

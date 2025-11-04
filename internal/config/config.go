@@ -66,7 +66,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("SERVER_READ_TIMEOUT", "30s")
 	viper.SetDefault("SERVER_WRITE_TIMEOUT", "30s")
 	viper.SetDefault("DB_HOST", "localhost")
-	viper.SetDefault("DB_PORT", "5432")
+	viper.SetDefault("DB_PORT", "5433")
 	viper.SetDefault("DB_USER", "parking_user")
 	viper.SetDefault("DB_PASSWORD", "parking_pass")
 	viper.SetDefault("DB_NAME", "parking_app")
