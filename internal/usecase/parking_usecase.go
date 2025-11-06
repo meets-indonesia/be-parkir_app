@@ -4,6 +4,7 @@ import (
 	"be-parkir/internal/domain/entities"
 	"be-parkir/internal/repository"
 	"errors"
+	"fmt"
 	"math"
 	"time"
 )
@@ -102,12 +103,8 @@ func (u *parkingUsecase) Checkin(req *entities.CheckinRequest) (*entities.Checki
 		}
 	}
 
-	// Validate checkin time: max 5pm (17:00)
+	// Get current time for check-in
 	checkinTime := nowGMT7()
-	checkinHour := checkinTime.Hour()
-	if checkinHour >= 17 {
-		return nil, errors.New("check-in is only allowed until 5pm (17:00)")
-	}
 
 	// Create parking session
 	session := &entities.ParkingSession{
@@ -360,14 +357,9 @@ func (u *parkingUsecase) ManualCheckin(jukirID uint, req *entities.ManualCheckin
 		return nil, errors.New("jukir is not active")
 	}
 
-	// Validate checkin time: max 5pm (17:00)
 	// Ensure waktu_masuk is in GMT+7 timezone
 	gmt7Loc := getGMT7Location()
 	checkinTime := req.WaktuMasuk.In(gmt7Loc)
-	checkinHour := checkinTime.Hour()
-	if checkinHour >= 17 {
-		return nil, errors.New("check-in is only allowed until 5pm (17:00)")
-	}
 
 	// Create manual parking session
 	session := &entities.ParkingSession{
@@ -430,22 +422,29 @@ func (u *parkingUsecase) ManualCheckout(jukirID uint, req *entities.ManualChecko
 	// Biaya parkir adalah FLAT RATE (bukan per jam)
 	totalCost := session.Area.HourlyRate // Flat rate, bukan hourly rate
 
-	// Update session
+	// For manual checkout, payment is automatically confirmed (no pending payment step)
+	now := time.Now()
+	confirmedAt := now
+
+	// Update session - directly mark as completed since manual checkout means payment is already received
 	session.CheckoutTime = &req.WaktuKeluar
 	session.Duration = &duration
 	session.TotalCost = &totalCost
-	session.SessionStatus = entities.SessionStatusPendingPayment
+	session.SessionStatus = entities.SessionStatusCompleted
+	session.PaymentStatus = entities.PaymentStatusPaid
 
 	if err := u.sessionRepo.Update(session); err != nil {
 		return nil, errors.New("failed to update manual parking session")
 	}
 
-	// Create payment record
+	// Create payment record - directly mark as paid (no pending confirmation needed for manual records)
 	payment := &entities.Payment{
 		SessionID:     session.ID,
 		Amount:        totalCost,
 		PaymentMethod: entities.PaymentMethodCash,
-		Status:        entities.PaymentStatusPending,
+		Status:        entities.PaymentStatusPaid,
+		ConfirmedBy:   &jukirID,
+		ConfirmedAt:   &confirmedAt,
 	}
 
 	if err := u.paymentRepo.Create(payment); err != nil {
@@ -463,13 +462,24 @@ func (u *parkingUsecase) ManualCheckout(jukirID uint, req *entities.ManualChecko
 		PlatNomor:    platNomor,
 		VehicleType:  string(session.VehicleType),
 		OldStatus:    string(entities.SessionStatusActive),
-		NewStatus:    string(entities.SessionStatusPendingPayment),
+		NewStatus:    string(entities.SessionStatusCompleted),
 		TotalCost:    totalCost,
 		CheckoutTime: req.WaktuKeluar.Format(time.RFC3339),
 		CheckinTime:  session.CheckinTime.Format(time.RFC3339),
 	}
 
 	u.eventManager.NotifyJukir(jukirID, EventSessionUpdate, eventData)
+
+	// Also notify payment confirmation
+	paymentEventData := PaymentConfirmedEvent{
+		SessionID:     session.ID,
+		PaymentID:     payment.ID,
+		Amount:        totalCost,
+		PaymentMethod: string(entities.PaymentMethodCash),
+		ConfirmedBy:   fmt.Sprintf("%d", jukirID),
+		ConfirmedAt:   confirmedAt.Format(time.RFC3339),
+	}
+	u.eventManager.NotifyJukir(jukirID, EventPaymentConfirmed, paymentEventData)
 
 	return &entities.ManualCheckoutResponse{
 		SessionID:     session.ID,
@@ -479,6 +489,6 @@ func (u *parkingUsecase) ManualCheckout(jukirID uint, req *entities.ManualChecko
 		WaktuKeluar:   req.WaktuKeluar,
 		Duration:      duration,
 		TotalCost:     totalCost,
-		PaymentStatus: string(entities.PaymentStatusPending),
+		PaymentStatus: string(entities.PaymentStatusPaid),
 	}, nil
 }
