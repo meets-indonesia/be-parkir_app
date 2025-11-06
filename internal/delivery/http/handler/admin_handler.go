@@ -613,54 +613,85 @@ func (h *Handlers) GetAllSessions(c *gin.Context) {
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/admin/areas [post]
 func (h *Handlers) CreateParkingArea(c *gin.Context) {
-	// Parse form-data
-	if err := c.Request.ParseMultipartForm(10 << 20); err != nil { // 10MB
-		h.Logger.Error("Failed to parse multipart form:", err)
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid form data"})
+	// Ensure this is a POST request
+	if c.Request.Method != http.MethodPost {
+		c.JSON(http.StatusMethodNotAllowed, gin.H{
+			"success": false,
+			"message": "Method not allowed",
+		})
 		return
 	}
 
-	// Build request struct from form
+	// Check content type - support both JSON and multipart form-data
+	contentType := c.GetHeader("Content-Type")
 	var req entities.CreateParkingAreaRequest
-	req.Name = c.PostForm("name")
-	req.Address = c.PostForm("address")
-	if latStr := c.PostForm("latitude"); latStr != "" {
-		if v, err := strconv.ParseFloat(latStr, 64); err == nil {
-			req.Latitude = v
-		} else {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid latitude"})
+
+	if contentType == "application/json" || strings.Contains(contentType, "application/json") {
+		// Handle JSON request
+		if err := c.ShouldBindJSON(&req); err != nil {
+			h.Logger.Error("Failed to bind JSON:", err)
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid request data", "error": err.Error()})
 			return
 		}
-	}
-	if lngStr := c.PostForm("longitude"); lngStr != "" {
-		if v, err := strconv.ParseFloat(lngStr, 64); err == nil {
-			req.Longitude = v
+	} else {
+		// Handle multipart form-data or form-urlencoded
+		if strings.HasPrefix(contentType, "multipart/form-data") {
+			// Parse multipart form-data
+			if err := c.Request.ParseMultipartForm(10 << 20); err != nil { // 10MB
+				h.Logger.Error("Failed to parse multipart form:", err)
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid form data"})
+				return
+			}
 		} else {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid longitude"})
-			return
+			// Parse regular form
+			if err := c.Request.ParseForm(); err != nil {
+				h.Logger.Error("Failed to parse form:", err)
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid form data"})
+				return
+			}
 		}
-	}
-	req.Regional = c.PostForm("regional")
-	if rateStr := c.PostForm("hourly_rate"); rateStr != "" {
-		if v, err := strconv.ParseFloat(rateStr, 64); err == nil {
-			req.HourlyRate = v
-		} else {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid hourly_rate"})
-			return
+
+		// Build request struct from form
+		req.Name = c.PostForm("name")
+		req.Address = c.PostForm("address")
+		if latStr := c.PostForm("latitude"); latStr != "" {
+			if v, err := strconv.ParseFloat(latStr, 64); err == nil {
+				req.Latitude = v
+			} else {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid latitude"})
+				return
+			}
 		}
-	}
-	if mm := c.PostForm("max_mobil"); mm != "" {
-		if v, err := strconv.Atoi(mm); err == nil {
-			req.MaxMobil = &v
+		if lngStr := c.PostForm("longitude"); lngStr != "" {
+			if v, err := strconv.ParseFloat(lngStr, 64); err == nil {
+				req.Longitude = v
+			} else {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid longitude"})
+				return
+			}
 		}
-	}
-	if mm := c.PostForm("max_motor"); mm != "" {
-		if v, err := strconv.Atoi(mm); err == nil {
-			req.MaxMotor = &v
+		req.Regional = c.PostForm("regional")
+		if rateStr := c.PostForm("hourly_rate"); rateStr != "" {
+			if v, err := strconv.ParseFloat(rateStr, 64); err == nil {
+				req.HourlyRate = v
+			} else {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid hourly_rate"})
+				return
+			}
 		}
+		if mm := c.PostForm("max_mobil"); mm != "" {
+			if v, err := strconv.Atoi(mm); err == nil {
+				req.MaxMobil = &v
+			}
+		}
+		if mm := c.PostForm("max_motor"); mm != "" {
+			if v, err := strconv.Atoi(mm); err == nil {
+				req.MaxMotor = &v
+			}
+		}
+		req.StatusOperasional = c.PostForm("status_operasional")
+		req.JenisArea = entities.JenisArea(c.PostForm("jenis_area"))
 	}
-	req.StatusOperasional = c.PostForm("status_operasional")
-	req.JenisArea = entities.JenisArea(c.PostForm("jenis_area"))
 
 	// Validate request
 	validate := validator.New()
@@ -671,24 +702,26 @@ func (h *Handlers) CreateParkingArea(c *gin.Context) {
 	}
 
 	var imageURL *string
-	// Handle optional image upload
-	fileHeader, err := c.FormFile("image")
-	if err == nil && fileHeader != nil {
-		f, err := fileHeader.Open()
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "failed to open image"})
-			return
+	// Handle optional image upload (only for multipart form-data)
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		fileHeader, err := c.FormFile("image")
+		if err == nil && fileHeader != nil {
+			f, err := fileHeader.Open()
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "failed to open image"})
+				return
+			}
+			defer f.Close()
+			// Upload to MinIO
+			objectName := fmt.Sprintf("areas/%d_%s", time.Now().UnixNano(), fileHeader.Filename)
+			url, err := h.Storage.Upload(c.Request.Context(), objectName, f, fileHeader.Size, fileHeader.Header.Get("Content-Type"))
+			if err != nil {
+				h.Logger.Error("MinIO upload failed:", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Upload failed"})
+				return
+			}
+			imageURL = &url
 		}
-		defer f.Close()
-		// Upload to MinIO
-		objectName := fmt.Sprintf("areas/%d_%s", time.Now().UnixNano(), fileHeader.Filename)
-		url, err := h.Storage.Upload(c.Request.Context(), objectName, f, fileHeader.Size, fileHeader.Header.Get("Content-Type"))
-		if err != nil {
-			h.Logger.Error("MinIO upload failed:", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Upload failed"})
-			return
-		}
-		imageURL = &url
 	}
 
 	response, err := h.AdminUC.CreateParkingArea(&req)
@@ -731,6 +764,15 @@ func (h *Handlers) CreateParkingArea(c *gin.Context) {
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/admin/areas [get]
 func (h *Handlers) GetParkingAreas(c *gin.Context) {
+	// Ensure this is a GET request
+	if c.Request.Method != http.MethodGet {
+		c.JSON(http.StatusMethodNotAllowed, gin.H{
+			"success": false,
+			"message": "Method not allowed",
+		})
+		return
+	}
+
 	regional := c.Query("regional")
 
 	var regionalPtr *string

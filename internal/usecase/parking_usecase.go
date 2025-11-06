@@ -43,12 +43,26 @@ func NewParkingUsecase(sessionRepo repository.ParkingSessionRepository, areaRepo
 }
 
 func (u *parkingUsecase) GetNearbyAreas(req *entities.NearbyAreasRequest) (*entities.NearbyAreasResponse, error) {
+	// If latitude and longitude are not provided, return all active areas
+	if req.Latitude == nil || req.Longitude == nil {
+		areas, err := u.areaRepo.GetActiveAreas()
+		if err != nil {
+			return nil, errors.New("failed to get parking areas")
+		}
+
+		return &entities.NearbyAreasResponse{
+			Areas: areas,
+			Count: int64(len(areas)),
+		}, nil
+	}
+
+	// If lat/long provided, use nearby areas logic
 	radius := req.Radius
 	if radius == 0 {
 		radius = 1.0 // Default 1km radius
 	}
 
-	areas, err := u.areaRepo.GetNearbyAreas(req.Latitude, req.Longitude, radius)
+	areas, err := u.areaRepo.GetNearbyAreas(*req.Latitude, *req.Longitude, radius)
 	if err != nil {
 		return nil, errors.New("failed to get nearby areas")
 	}
@@ -56,7 +70,7 @@ func (u *parkingUsecase) GetNearbyAreas(req *entities.NearbyAreasRequest) (*enti
 	// Filter areas by actual distance (more accurate than bounding box)
 	var filteredAreas []entities.ParkingArea
 	for _, area := range areas {
-		distance := u.calculateDistance(req.Latitude, req.Longitude, area.Latitude, area.Longitude)
+		distance := u.calculateDistance(*req.Latitude, *req.Longitude, area.Latitude, area.Longitude)
 		if distance <= radius {
 			filteredAreas = append(filteredAreas, area)
 		}

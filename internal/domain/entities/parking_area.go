@@ -76,9 +76,9 @@ type UpdateParkingAreaRequest struct {
 }
 
 type NearbyAreasRequest struct {
-	Latitude  float64 `json:"latitude" validate:"required,latitude"`
-	Longitude float64 `json:"longitude" validate:"required,longitude"`
-	Radius    float64 `json:"radius" validate:"omitempty,min=0.1,max=10"`
+	Latitude  *float64 `json:"latitude,omitempty" validate:"omitempty,latitude"`
+	Longitude *float64 `json:"longitude,omitempty" validate:"omitempty,longitude"`
+	Radius    float64  `json:"radius" validate:"omitempty,min=0.1,max=10"`
 }
 
 type NearbyAreasResponse struct {

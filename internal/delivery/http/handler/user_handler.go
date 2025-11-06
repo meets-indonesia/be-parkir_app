@@ -112,15 +112,15 @@ func (h *Handlers) UpdateProfile(c *gin.Context) {
 
 // GetNearbyAreas godoc
 // @Summary Get nearby parking areas
-// @Description Get parking areas within specified radius of user's location
+// @Description Get parking areas within specified radius of user's location. If latitude and longitude are not provided, returns all active parking areas.
 // @Tags parking
 // @Accept json
 // @Produce json
-// @Security BearerAuth
-// @Param request body entities.NearbyAreasRequest true "Location data"
+// @Param latitude query number false "Latitude"
+// @Param longitude query number false "Longitude"
+// @Param radius query number false "Radius in kilometers" default(1.0)
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]interface{}
-// @Failure 401 {object} map[string]interface{}
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/parking/locations [get]
 func (h *Handlers) GetNearbyAreas(c *gin.Context) {
@@ -129,41 +129,50 @@ func (h *Handlers) GetNearbyAreas(c *gin.Context) {
 	longitudeStr := c.Query("longitude")
 	radiusStr := c.DefaultQuery("radius", "1.0")
 
-	if latitudeStr == "" || longitudeStr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "latitude and longitude are required",
-		})
-		return
-	}
+	var req *entities.NearbyAreasRequest
 
-	latitude, err := strconv.ParseFloat(latitudeStr, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid latitude format",
-		})
-		return
-	}
+	// If both latitude and longitude are provided, parse them
+	if latitudeStr != "" && longitudeStr != "" {
+		latitude, err := strconv.ParseFloat(latitudeStr, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "Invalid latitude format",
+			})
+			return
+		}
 
-	longitude, err := strconv.ParseFloat(longitudeStr, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid longitude format",
-		})
-		return
-	}
+		longitude, err := strconv.ParseFloat(longitudeStr, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "Invalid longitude format",
+			})
+			return
+		}
 
-	radius, err := strconv.ParseFloat(radiusStr, 64)
-	if err != nil {
-		radius = 1.0
-	}
+		radius, err := strconv.ParseFloat(radiusStr, 64)
+		if err != nil {
+			radius = 1.0
+		}
 
-	req := &entities.NearbyAreasRequest{
-		Latitude:  latitude,
-		Longitude: longitude,
-		Radius:    radius,
+		req = &entities.NearbyAreasRequest{
+			Latitude:  &latitude,
+			Longitude: &longitude,
+			Radius:    radius,
+		}
+	} else {
+		// If lat/long not provided, return all areas
+		radius, err := strconv.ParseFloat(radiusStr, 64)
+		if err != nil {
+			radius = 1.0
+		}
+
+		req = &entities.NearbyAreasRequest{
+			Latitude:  nil,
+			Longitude: nil,
+			Radius:    radius,
+		}
 	}
 
 	response, err := h.ParkingUC.GetNearbyAreas(req)
@@ -176,9 +185,14 @@ func (h *Handlers) GetNearbyAreas(c *gin.Context) {
 		return
 	}
 
+	message := "Parking areas retrieved successfully"
+	if req.Latitude != nil && req.Longitude != nil {
+		message = "Nearby areas retrieved successfully"
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": "Nearby areas retrieved successfully",
+		"message": message,
 		"data":    response,
 	})
 }
