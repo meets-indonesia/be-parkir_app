@@ -2361,13 +2361,33 @@ func (h *Handlers) GetJukirByID(c *gin.Context) {
 // @Failure 500 {object} map[string]interface{}
 // @Router /api/v1/admin/jukirs/revenue [get]
 func (h *Handlers) GetJukirsWithRevenue(c *gin.Context) {
+	limitStr := c.DefaultQuery("limit", "10")
+	offsetStr := c.DefaultQuery("offset", "0")
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid limit",
+		})
+		return
+	}
+	offset, err := strconv.Atoi(offsetStr)
+	if err != nil || offset < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid offset",
+		})
+		return
+	}
+
 	dateRange := c.DefaultQuery("date_range", "hari_ini")
 
 	var dateRangePtr *string
 	if dateRange != "" {
-		if dateRange == "hari_ini" || dateRange == "minggu_ini" || dateRange == "bulan_ini" {
+		switch dateRange {
+		case "hari_ini", "minggu_ini", "bulan_ini":
 			dateRangePtr = &dateRange
-		} else {
+		default:
 			c.JSON(http.StatusBadRequest, gin.H{
 				"success": false,
 				"message": "Invalid date_range. Use: hari_ini, minggu_ini, or bulan_ini",
@@ -2376,7 +2396,7 @@ func (h *Handlers) GetJukirsWithRevenue(c *gin.Context) {
 		}
 	}
 
-	response, count, err := h.AdminUC.GetAllJukirsListWithRevenue(dateRangePtr)
+	response, count, err := h.AdminUC.GetAllJukirsListWithRevenue(limit, offset, dateRangePtr)
 	if err != nil {
 		h.Logger.Error("Failed to get jukirs with revenue:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -2392,7 +2412,9 @@ func (h *Handlers) GetJukirsWithRevenue(c *gin.Context) {
 		"data":    response,
 		"meta": gin.H{
 			"pagination": gin.H{
-				"total": count,
+				"total":  count,
+				"limit":  limit,
+				"offset": offset,
 			},
 			"filter": gin.H{
 				"date_range": dateRange,

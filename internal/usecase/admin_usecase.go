@@ -26,7 +26,7 @@ type AdminUsecase interface {
 	GetTotalRevenue(startTime, endTime *time.Time, vehicleType *string, regional *string) (map[string]interface{}, error)
 	ExportRevenueReport(startTime, endTime *time.Time, regional *string) (*bytes.Buffer, error)
 	GetJukirsListWithRevenue(dateRange *string, vehicleType *string, includeRevenue *bool, status *string) ([]map[string]interface{}, error)
-	GetAllJukirsListWithRevenue(dateRange *string) ([]map[string]interface{}, int64, error)
+	GetAllJukirsListWithRevenue(limit, offset int, dateRange *string) ([]map[string]interface{}, int64, error)
 	GetJukirByID(jukirID uint, dateRange *string) (map[string]interface{}, error)
 	GetChartDataDetailed(startTime, endTime *time.Time, vehicleType *string, regional *string) ([]map[string]interface{}, error)
 	GetParkingAreaStatistics(regional *string) (map[string]interface{}, error)
@@ -2082,9 +2082,16 @@ func (u *adminUsecase) GetJukirsWithRevenueAndDateFilter_OLD(revenue *bool, date
 	return result, count, nil
 }
 
-func (u *adminUsecase) GetAllJukirsListWithRevenue(dateRange *string) ([]map[string]interface{}, int64, error) {
-	// Get all jukirs (with large limit to include all)
-	jukirs, count, err := u.jukirRepo.List(1000, 0)
+func (u *adminUsecase) GetAllJukirsListWithRevenue(limit, offset int, dateRange *string) ([]map[string]interface{}, int64, error) {
+	// Normalize pagination values
+	if limit <= 0 {
+		limit = 10
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	jukirs, count, err := u.jukirRepo.List(limit, offset)
 	if err != nil {
 		return nil, 0, errors.New("failed to get jukirs")
 	}
