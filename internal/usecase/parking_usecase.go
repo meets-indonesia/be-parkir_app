@@ -361,6 +361,16 @@ func (u *parkingUsecase) ManualCheckin(jukirID uint, req *entities.ManualCheckin
 	gmt7Loc := getGMT7Location()
 	checkinTime := req.WaktuMasuk.In(gmt7Loc)
 
+	// Validate GPS coordinates (manual check-in requires location confirmation)
+	if req.Latitude == nil || req.Longitude == nil {
+		return nil, errors.New("latitude and longitude are required for manual check-in")
+	}
+
+	distance := u.calculateDistance(*req.Latitude, *req.Longitude, jukir.Area.Latitude, jukir.Area.Longitude)
+	if distance > 0.05 { // 50 meters
+		return nil, errors.New("you must be within 50 meters of the parking area for manual check-in")
+	}
+
 	// Create manual parking session
 	session := &entities.ParkingSession{
 		JukirID:        &jukir.ID,

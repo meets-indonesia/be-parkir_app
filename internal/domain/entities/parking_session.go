@@ -96,6 +96,8 @@ type ManualCheckinRequest struct {
 	PlatNomor   string      `json:"plat_nomor" validate:"required,min=1,max=20"`
 	VehicleType VehicleType `json:"vehicle_type" validate:"required,oneof=mobil motor"`
 	WaktuMasuk  time.Time   `json:"waktu_masuk" validate:"required"`
+	Latitude    *float64    `json:"latitude" validate:"required,latitude"`
+	Longitude   *float64    `json:"longitude" validate:"required,longitude"`
 }
 
 type ManualCheckoutRequest struct {
