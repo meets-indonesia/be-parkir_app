@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -142,8 +143,8 @@ func getPeriods(dateRange string, now time.Time, paymentRepo repository.PaymentR
 			periods[i] = map[string]interface{}{
 				"period":            months[period.Month()-1],
 				"date":              period.Format("2006-01"),
-				"actual_revenue":    actualRevenue,
-				"estimated_revenue": estimatedRevenue,
+				"actual_revenue":    roundCurrency(actualRevenue),
+				"estimated_revenue": roundCurrency(estimatedRevenue),
 			}
 		}
 		return periods
@@ -162,8 +163,8 @@ func getPeriods(dateRange string, now time.Time, paymentRepo repository.PaymentR
 			periods[i] = map[string]interface{}{
 				"period":            fmt.Sprintf("Minggu %d", weeksAgo+1),
 				"date":              start.Format("2006-01-02"),
-				"actual_revenue":    actualRevenue,
-				"estimated_revenue": estimatedRevenue,
+				"actual_revenue":    roundCurrency(actualRevenue),
+				"estimated_revenue": roundCurrency(estimatedRevenue),
 			}
 		}
 		return periods
@@ -182,8 +183,8 @@ func getPeriods(dateRange string, now time.Time, paymentRepo repository.PaymentR
 			periods[i] = map[string]interface{}{
 				"period":            weekdays[day.Weekday()],
 				"date":              day.Format("2006-01-02"),
-				"actual_revenue":    actualRevenue,
-				"estimated_revenue": estimatedRevenue,
+				"actual_revenue":    roundCurrency(actualRevenue),
+				"estimated_revenue": roundCurrency(estimatedRevenue),
 			}
 		}
 		return periods
@@ -215,6 +216,10 @@ func calculateEstimatedRevenue(sessionRepo repository.ParkingSessionRepository, 
 	}
 
 	return estimatedRevenue
+}
+
+func roundCurrency(value float64) float64 {
+	return math.Round(value)
 }
 
 func (u *adminUsecase) GetOverview(vehicleType *string, startTime, endTime *time.Time) (map[string]interface{}, error) {
@@ -384,8 +389,8 @@ func (u *adminUsecase) GetOverview(vehicleType *string, startTime, endTime *time
 		},
 		"active_sessions":   activeSessions,
 		"pending_payments":  pendingPayments,
-		"today_revenue":     totalRevenue,
-		"estimated_revenue": estimatedRevenue,
+		"today_revenue":     roundCurrency(totalRevenue),
+		"estimated_revenue": roundCurrency(estimatedRevenue),
 		"chart_data":        chartData,
 		"jukir_status": map[string]interface{}{
 			"active":   activeJukirs,
@@ -491,7 +496,7 @@ func (u *adminUsecase) GetJukirsWithRevenue(limit, offset int, vehicleType *stri
 				"hourly_rate": jukir.Area.HourlyRate,
 				"status":      jukir.Area.Status,
 			},
-			"revenue":  revenue,
+			"revenue":  roundCurrency(revenue),
 			"sessions": len(sessions),
 		})
 	}
@@ -852,9 +857,9 @@ func (u *adminUsecase) GetTotalRevenue(startTime, endTime *time.Time, vehicleTyp
 	}
 
 	return map[string]interface{}{
-		"actual_revenue":    actualRevenue,
-		"estimated_revenue": estimatedRevenue,
-		"total_revenue":     actualRevenue + estimatedRevenue,
+		"actual_revenue":    roundCurrency(actualRevenue),
+		"estimated_revenue": roundCurrency(estimatedRevenue),
+		"total_revenue":     roundCurrency(actualRevenue + estimatedRevenue),
 	}, nil
 }
 
@@ -940,9 +945,9 @@ func (u *adminUsecase) GetJukirsListWithRevenue(dateRange *string, vehicleType *
 
 		// Add revenue only if includeRevenue is true
 		if includeRevenue != nil && *includeRevenue {
-			item["actual_revenue"] = actualRevenue
-			item["estimated_revenue"] = estimatedRevenue
-			item["total_revenue"] = actualRevenue + estimatedRevenue
+			item["actual_revenue"] = roundCurrency(actualRevenue)
+			item["estimated_revenue"] = roundCurrency(estimatedRevenue)
+			item["total_revenue"] = roundCurrency(actualRevenue + estimatedRevenue)
 			item["date"] = startTime.Format("2006-01-02")
 		}
 
@@ -967,16 +972,18 @@ func (u *adminUsecase) GetJukirByID(jukirID uint, dateRange *string) (map[string
 	if jukir.User.DisplayPassword != nil {
 		displayPassword = *jukir.User.DisplayPassword
 		userData["password"] = *jukir.User.DisplayPassword
+		userData["display_password"] = *jukir.User.DisplayPassword
 	}
 
 	response := map[string]interface{}{
-		"id":         jukir.ID,
-		"name":       jukir.User.Name,
-		"status":     string(jukir.Status),
-		"jukir_code": jukir.JukirCode,
-		"qr_token":   jukir.QRToken,
-		"password":   displayPassword,
-		"user":       userData,
+		"id":               jukir.ID,
+		"name":             jukir.User.Name,
+		"status":           string(jukir.Status),
+		"jukir_code":       jukir.JukirCode,
+		"qr_token":         jukir.QRToken,
+		"password":         displayPassword,
+		"display_password": displayPassword,
+		"user":             userData,
 		"area": map[string]interface{}{
 			"id":      jukir.Area.ID,
 			"name":    jukir.Area.Name,
@@ -1060,27 +1067,30 @@ func (u *adminUsecase) GetJukirByID(jukirID uint, dateRange *string) (map[string
 						}
 					}
 
+					dayActualRounded := roundCurrency(dayActual)
+					dayEstimatedRounded := roundCurrency(dayEstimated)
+
 					revenueDays = append(revenueDays, map[string]interface{}{
 						"day":               weekdays[day.Weekday()],
 						"date":              day.Format("2006-01-02"),
-						"actual_revenue":    dayActual,
-						"estimated_revenue": dayEstimated,
-						"total_revenue":     dayActual + dayEstimated,
+						"actual_revenue":    dayActualRounded,
+						"estimated_revenue": dayEstimatedRounded,
+						"total_revenue":     roundCurrency(dayActual + dayEstimated),
 					})
 				}
 
 				response["revenue"] = map[string]interface{}{
-					"actual_revenue":    actualRevenue,
-					"estimated_revenue": estimatedRevenue,
-					"total_revenue":     actualRevenue + estimatedRevenue,
+					"actual_revenue":    roundCurrency(actualRevenue),
+					"estimated_revenue": roundCurrency(estimatedRevenue),
+					"total_revenue":     roundCurrency(actualRevenue + estimatedRevenue),
 					"date_range":        *dateRange,
 					"breakdown":         revenueDays,
 				}
 			} else {
 				response["revenue"] = map[string]interface{}{
-					"actual_revenue":    actualRevenue,
-					"estimated_revenue": estimatedRevenue,
-					"total_revenue":     actualRevenue + estimatedRevenue,
+					"actual_revenue":    roundCurrency(actualRevenue),
+					"estimated_revenue": roundCurrency(estimatedRevenue),
+					"total_revenue":     roundCurrency(actualRevenue + estimatedRevenue),
 					"date_range":        *dateRange,
 				}
 			}
@@ -1134,8 +1144,8 @@ func (u *adminUsecase) GetChartDataDetailed(startTime, endTime *time.Time, vehic
 		{
 			"summary": map[string]interface{}{
 				"period": map[string]interface{}{
-					"actual_revenue":    actualRevenue,
-					"estimated_revenue": estimatedRevenue,
+					"actual_revenue":    roundCurrency(actualRevenue),
+					"estimated_revenue": roundCurrency(estimatedRevenue),
 					"start_date":        actualStart.Format("2006-01-02"),
 					"end_date":          actualEnd.Format("2006-01-02"),
 				},
@@ -1458,7 +1468,7 @@ func (u *adminUsecase) GetReports(startDate, endDate time.Time, areaID *uint) (m
 		"completed_sessions": completedSessions,
 		"active_sessions":    activeSessions,
 		"pending_payments":   pendingPayments,
-		"total_revenue":      totalRevenue,
+		"total_revenue":      roundCurrency(totalRevenue),
 		"start_date":         startDate.Format("2006-01-02"),
 		"end_date":           endDate.Format("2006-01-02"),
 	}, nil
@@ -1723,7 +1733,7 @@ func (u *adminUsecase) GetParkingAreaDetail(areaID uint) (map[string]interface{}
 		"jukirs":          jukirsData,
 		"total_sessions":  totalSessions,
 		"active_sessions": activeSessions,
-		"total_revenue":   totalRevenue,
+		"total_revenue":   roundCurrency(totalRevenue),
 		"jukir_count":     len(jukirs),
 	}, nil
 }
@@ -1950,7 +1960,7 @@ func (u *adminUsecase) GetRevenueTable(limit, offset int, areaID *uint, startTim
 			"area_name":          area.Name,
 			"total_sessions":     totalSessions,
 			"completed_sessions": completedSessions,
-			"total_revenue":      totalRevenue,
+			"total_revenue":      roundCurrency(totalRevenue),
 		})
 	}
 
@@ -2045,7 +2055,7 @@ func (u *adminUsecase) GetJukirsWithRevenueAndDateFilter_OLD(revenue *bool, date
 			},
 			"jukir_code":     jukir.JukirCode,
 			"total_sessions": len(jukirSessions),
-			"total_revenue":  totalRevenue,
+			"total_revenue":  roundCurrency(totalRevenue),
 			"has_revenue":    hasRevenue,
 			"date":           startTime.Format("2006-01-02"),
 			"created_at":     jukir.CreatedAt,
@@ -2110,7 +2120,7 @@ func (u *adminUsecase) GetAllJukirsListWithRevenue(dateRange *string) ([]map[str
 			"area_name":      jukir.Area.Name,
 			"jukir_code":     jukir.JukirCode,
 			"total_sessions": len(jukirSessions),
-			"total_revenue":  actualRevenue,
+			"total_revenue":  roundCurrency(actualRevenue),
 			"date_range":     dateRangeStr,
 		}
 
@@ -2141,8 +2151,8 @@ func (u *adminUsecase) generateDailyChartData(start, end time.Time, regional *st
 		periods = append(periods, map[string]interface{}{
 			"period":            weekdays[d.Weekday()],
 			"date":              d.Format("2006-01-02"),
-			"actual_revenue":    actualRevenue,
-			"estimated_revenue": estimatedRevenue,
+			"actual_revenue":    roundCurrency(actualRevenue),
+			"estimated_revenue": roundCurrency(estimatedRevenue),
 		})
 	}
 
@@ -2181,8 +2191,8 @@ func (u *adminUsecase) generateWeeklyChartData(start, end time.Time, regional *s
 			periods = append(periods, map[string]interface{}{
 				"period":            fmt.Sprintf("Minggu %d", weekNum),
 				"date":              weekStart.Format("2006-01-02"),
-				"actual_revenue":    actualRevenue,
-				"estimated_revenue": estimatedRevenue,
+				"actual_revenue":    roundCurrency(actualRevenue),
+				"estimated_revenue": roundCurrency(estimatedRevenue),
 			})
 		}
 
@@ -2224,8 +2234,8 @@ func (u *adminUsecase) generateMonthlyChartData(start, end time.Time, regional *
 		periods = append(periods, map[string]interface{}{
 			"period":            monthNames[current.Month()-1],
 			"date":              current.Format("2006-01"),
-			"actual_revenue":    actualRevenue,
-			"estimated_revenue": estimatedRevenue,
+			"actual_revenue":    roundCurrency(actualRevenue),
+			"estimated_revenue": roundCurrency(estimatedRevenue),
 		})
 
 		// Move to next month
