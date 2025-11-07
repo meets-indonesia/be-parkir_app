@@ -211,6 +211,8 @@ func calculateEstimatedRevenue(sessionRepo repository.ParkingSessionRepository, 
 				estimatedRevenue += area.HourlyRate * hours
 			} else if session.SessionStatus == entities.SessionStatusPendingPayment && session.TotalCost != nil {
 				estimatedRevenue += *session.TotalCost
+			} else if session.IsManualRecord && session.TotalCost != nil {
+				estimatedRevenue += *session.TotalCost
 			}
 		}
 	}
@@ -362,6 +364,8 @@ func (u *adminUsecase) GetOverview(vehicleType *string, startTime, endTime *time
 			hours := minutes / 60.0
 			estimatedRevenue += area.HourlyRate * hours
 		} else if session.SessionStatus == entities.SessionStatusPendingPayment && session.TotalCost != nil {
+			estimatedRevenue += *session.TotalCost
+		} else if session.IsManualRecord && session.TotalCost != nil {
 			estimatedRevenue += *session.TotalCost
 		}
 	}
@@ -853,6 +857,8 @@ func (u *adminUsecase) GetTotalRevenue(startTime, endTime *time.Time, vehicleTyp
 			estimatedRevenue += area.HourlyRate * hours
 		} else if session.SessionStatus == entities.SessionStatusPendingPayment && session.TotalCost != nil {
 			estimatedRevenue += *session.TotalCost
+		} else if session.IsManualRecord && session.TotalCost != nil {
+			estimatedRevenue += *session.TotalCost
 		}
 	}
 
@@ -927,6 +933,8 @@ func (u *adminUsecase) GetJukirsListWithRevenue(dateRange *string, vehicleType *
 				hours := float64(minutes) / 60.0
 				estimatedRevenue += area.HourlyRate * hours
 			} else if session.SessionStatus == entities.SessionStatusPendingPayment && session.TotalCost != nil {
+				estimatedRevenue += *session.TotalCost
+			} else if session.IsManualRecord && session.TotalCost != nil {
 				estimatedRevenue += *session.TotalCost
 			}
 		}
@@ -1027,6 +1035,8 @@ func (u *adminUsecase) GetJukirByID(jukirID uint, dateRange *string) (map[string
 					estimatedRevenue += area.HourlyRate * hours
 				} else if session.SessionStatus == entities.SessionStatusPendingPayment && session.TotalCost != nil {
 					estimatedRevenue += *session.TotalCost
+				} else if session.IsManualRecord && session.TotalCost != nil {
+					estimatedRevenue += *session.TotalCost
 				}
 			}
 
@@ -1063,6 +1073,8 @@ func (u *adminUsecase) GetJukirByID(jukirID uint, dateRange *string) (map[string
 							hours := float64(minutes) / 60.0
 							dayEstimated += area.HourlyRate * hours
 						} else if session.SessionStatus == entities.SessionStatusPendingPayment && session.TotalCost != nil {
+							dayEstimated += *session.TotalCost
+						} else if session.IsManualRecord && session.TotalCost != nil {
 							dayEstimated += *session.TotalCost
 						}
 					}
@@ -2327,6 +2339,8 @@ func (u *adminUsecase) ExportRevenueReport(startTime, endTime *time.Time, region
 				hours := float64(minutes) / 60.0
 				estimatedRevenue += area.HourlyRate * hours
 			} else if session.SessionStatus == entities.SessionStatusPendingPayment && session.TotalCost != nil {
+				estimatedRevenue += *session.TotalCost
+			} else if session.IsManualRecord && session.TotalCost != nil {
 				estimatedRevenue += *session.TotalCost
 			}
 		}
