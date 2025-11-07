@@ -958,17 +958,25 @@ func (u *adminUsecase) GetJukirByID(jukirID uint, dateRange *string) (map[string
 		return nil, errors.New("jukir not found")
 	}
 
+	userData := map[string]interface{}{
+		"id":       jukir.User.ID,
+		"name":     jukir.User.Name,
+		"username": jukir.User.Email, // Use email field as username
+	}
+	var displayPassword interface{}
+	if jukir.User.DisplayPassword != nil {
+		displayPassword = *jukir.User.DisplayPassword
+		userData["password"] = *jukir.User.DisplayPassword
+	}
+
 	response := map[string]interface{}{
 		"id":         jukir.ID,
 		"name":       jukir.User.Name,
 		"status":     string(jukir.Status),
 		"jukir_code": jukir.JukirCode,
 		"qr_token":   jukir.QRToken,
-		"user": map[string]interface{}{
-			"id":       jukir.User.ID,
-			"name":     jukir.User.Name,
-			"username": jukir.User.Email, // Use email field as username
-		},
+		"password":   displayPassword,
+		"user":       userData,
 		"area": map[string]interface{}{
 			"id":      jukir.Area.ID,
 			"name":    jukir.Area.Name,
