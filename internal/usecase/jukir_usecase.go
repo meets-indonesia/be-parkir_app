@@ -241,6 +241,9 @@ func (u *jukirUsecase) GetDailyReport(jukirID uint, date time.Time) (*entities.D
 	var totalRevenue float64
 	var pendingPayments int64
 	var completedSessions int64
+	var vehiclesOut int64
+
+	records := make([]entities.DailyReportSessionItem, 0, len(sessions))
 
 	for _, session := range sessions {
 		if session.SessionStatus == entities.SessionStatusCompleted {
@@ -248,9 +251,34 @@ func (u *jukirUsecase) GetDailyReport(jukirID uint, date time.Time) (*entities.D
 			if session.TotalCost != nil {
 				totalRevenue += *session.TotalCost
 			}
-		} else if session.SessionStatus == entities.SessionStatusPendingPayment {
+		}
+
+		if session.SessionStatus == entities.SessionStatusPendingPayment {
 			pendingPayments++
 		}
+
+		if session.CheckoutTime != nil {
+			vehiclesOut++
+		}
+
+		var sessionID *uint
+		var platNomor *string
+
+		if session.IsManualRecord {
+			platNomor = session.PlatNomor
+		} else {
+			sessionID = &session.ID
+		}
+
+		records = append(records, entities.DailyReportSessionItem{
+			SessionID:    sessionID,
+			PlatNomor:    platNomor,
+			CheckinTime:  session.CheckinTime,
+			CheckoutTime: session.CheckoutTime,
+			VehicleType:  string(session.VehicleType),
+			IsManual:     session.IsManualRecord,
+			Status:       string(session.SessionStatus),
+		})
 	}
 
 	return &entities.DailyReportResponse{
@@ -259,6 +287,9 @@ func (u *jukirUsecase) GetDailyReport(jukirID uint, date time.Time) (*entities.D
 		TotalRevenue:      totalRevenue,
 		PendingPayments:   pendingPayments,
 		CompletedSessions: completedSessions,
+		VehiclesIn:        int64(len(sessions)),
+		VehiclesOut:       vehiclesOut,
+		Records:           records,
 	}, nil
 }
 

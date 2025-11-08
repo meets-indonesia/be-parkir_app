@@ -66,9 +66,22 @@ type PendingPaymentResponse struct {
 }
 
 type DailyReportResponse struct {
-	Date              string  `json:"date"`
-	TotalSessions     int64   `json:"total_sessions"`
-	TotalRevenue      float64 `json:"total_revenue"`
-	PendingPayments   int64   `json:"pending_payments"`
-	CompletedSessions int64   `json:"completed_sessions"`
+	Date              string                   `json:"date"`
+	TotalSessions     int64                    `json:"total_sessions"`
+	TotalRevenue      float64                  `json:"total_revenue"`
+	PendingPayments   int64                    `json:"pending_payments"`
+	CompletedSessions int64                    `json:"completed_sessions"`
+	VehiclesIn        int64                    `json:"vehicles_in"`
+	VehiclesOut       int64                    `json:"vehicles_out"`
+	Records           []DailyReportSessionItem `json:"records"`
+}
+
+type DailyReportSessionItem struct {
+	SessionID    *uint      `json:"session_id,omitempty"`
+	PlatNomor    *string    `json:"plat_nomor,omitempty"`
+	CheckinTime  time.Time  `json:"checkin_time"`
+	CheckoutTime *time.Time `json:"checkout_time,omitempty"`
+	VehicleType  string     `json:"vehicle_type"`
+	IsManual     bool       `json:"is_manual"`
+	Status       string     `json:"status"`
 }
