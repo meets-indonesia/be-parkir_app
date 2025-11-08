@@ -103,6 +103,8 @@ type ManualCheckinRequest struct {
 type ManualCheckoutRequest struct {
 	SessionID   uint      `json:"session_id" validate:"required"`
 	WaktuKeluar time.Time `json:"waktu_keluar" validate:"required"`
+	Latitude    *float64  `json:"latitude" validate:"required,latitude"`
+	Longitude   *float64  `json:"longitude" validate:"required,longitude"`
 }
 
 type ManualCheckinResponse struct {

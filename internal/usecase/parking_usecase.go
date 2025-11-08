@@ -32,6 +32,10 @@ type parkingUsecase struct {
 	eventManager *EventManager
 }
 
+const (
+	defaultLocationToleranceKM = 0.1 // 100 meters
+)
+
 func NewParkingUsecase(sessionRepo repository.ParkingSessionRepository, areaRepo repository.ParkingAreaRepository, userRepo repository.UserRepository, jukirRepo repository.JukirRepository, paymentRepo repository.PaymentRepository, eventManager *EventManager) ParkingUsecase {
 	return &parkingUsecase{
 		sessionRepo:  sessionRepo,
@@ -95,12 +99,13 @@ func (u *parkingUsecase) Checkin(req *entities.CheckinRequest) (*entities.Checki
 		return nil, errors.New("jukir is not active")
 	}
 
-	// Optional GPS verification (skip if coordinates not provided)
-	if req.Latitude != nil && req.Longitude != nil {
-		distance := u.calculateDistance(*req.Latitude, *req.Longitude, jukir.Area.Latitude, jukir.Area.Longitude)
-		if distance > 0.05 { // 50 meters
-			return nil, errors.New("you must be within 50 meters of the parking area")
-		}
+	// Require GPS verification
+	if req.Latitude == nil || req.Longitude == nil {
+		return nil, errors.New("latitude and longitude are required for QR check-in")
+	}
+
+	if err := u.ensureWithinArea(*req.Latitude, *req.Longitude, jukir.Area); err != nil {
+		return nil, err
 	}
 
 	// Get current time for check-in
@@ -166,12 +171,13 @@ func (u *parkingUsecase) Checkout(req *entities.CheckoutRequest) (*entities.Chec
 		return nil, errors.New("QR code does not match the check-in location")
 	}
 
-	// Optional GPS verification (skip if coordinates not provided)
-	if req.Latitude != nil && req.Longitude != nil {
-		distance := u.calculateDistance(*req.Latitude, *req.Longitude, jukir.Area.Latitude, jukir.Area.Longitude)
-		if distance > 0.01 { // 100 meters
-			return nil, errors.New("you must be within 50 meters of the parking area")
-		}
+	// Require GPS verification
+	if req.Latitude == nil || req.Longitude == nil {
+		return nil, errors.New("latitude and longitude are required for QR checkout")
+	}
+
+	if err := u.ensureWithinArea(*req.Latitude, *req.Longitude, jukir.Area); err != nil {
+		return nil, err
 	}
 
 	// Calculate duration and cost (FLAT RATE, not per hour)
@@ -341,6 +347,14 @@ func (u *parkingUsecase) calculateDistance(lat1, lng1, lat2, lng2 float64) float
 	return distance
 }
 
+func (u *parkingUsecase) ensureWithinArea(lat, lng float64, area entities.ParkingArea) error {
+	distance := u.calculateDistance(lat, lng, area.Latitude, area.Longitude)
+	if distance > defaultLocationToleranceKM {
+		return fmt.Errorf("you must be within %.0f meters of the parking area", defaultLocationToleranceKM*1000)
+	}
+	return nil
+}
+
 func (u *parkingUsecase) GetSessionByID(sessionID uint) (*entities.ParkingSession, error) {
 	return u.sessionRepo.GetByID(sessionID)
 }
@@ -366,9 +380,8 @@ func (u *parkingUsecase) ManualCheckin(jukirID uint, req *entities.ManualCheckin
 		return nil, errors.New("latitude and longitude are required for manual check-in")
 	}
 
-	distance := u.calculateDistance(*req.Latitude, *req.Longitude, jukir.Area.Latitude, jukir.Area.Longitude)
-	if distance > 0.05 { // 50 meters
-		return nil, errors.New("you must be within 50 meters of the parking area for manual check-in")
+	if err := u.ensureWithinArea(*req.Latitude, *req.Longitude, jukir.Area); err != nil {
+		return nil, err
 	}
 
 	// Create manual parking session
@@ -422,6 +435,15 @@ func (u *parkingUsecase) ManualCheckout(jukirID uint, req *entities.ManualChecko
 	// Check if it's a manual record
 	if !session.IsManualRecord {
 		return nil, errors.New("session is not a manual record")
+	}
+
+	// Validate GPS coordinates
+	if req.Latitude == nil || req.Longitude == nil {
+		return nil, errors.New("latitude and longitude are required for manual checkout")
+	}
+
+	if err := u.ensureWithinArea(*req.Latitude, *req.Longitude, session.Area); err != nil {
+		return nil, err
 	}
 
 	// Calculate duration and cost (FLAT RATE, not per hour)
