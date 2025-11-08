@@ -63,7 +63,11 @@ func (h *Handlers) StreamJukirEvents(c *gin.Context) {
 	for {
 		select {
 		case event := <-eventChan:
-			c.SSEvent(string(event.Type), event.Data)
+			payload := map[string]interface{}{
+				"type": event.Type,
+				"data": event.Data,
+			}
+			c.SSEvent("", payload)
 			c.Writer.Flush()
 
 		case <-c.Request.Context().Done():
