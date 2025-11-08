@@ -1,7 +1,6 @@
 package usecase
 
 import (
-	"encoding/json"
 	"sync"
 )
 
@@ -54,7 +53,7 @@ type StatsUpdateEvent struct {
 // JukirClient represents a connected jukir client
 type JukirClient struct {
 	JukirID uint
-	Channel chan string
+	Channel chan Event
 }
 
 // EventManager manages SSE connections and broadcasts events
@@ -71,12 +70,12 @@ func NewEventManager() *EventManager {
 }
 
 // RegisterJukir registers a jukir for SSE updates
-func (em *EventManager) RegisterJukir(jukirID uint) chan string {
+func (em *EventManager) RegisterJukir(jukirID uint) chan Event {
 	em.mu.Lock()
 	defer em.mu.Unlock()
 
 	// Create channel for this jukir
-	ch := make(chan string, 10) // Buffer of 10 events
+	ch := make(chan Event, 10) // Buffer of 10 events
 
 	client := &JukirClient{
 		JukirID: jukirID,
@@ -109,14 +108,9 @@ func (em *EventManager) NotifyJukir(jukirID uint, eventType EventType, data inte
 			Data: data,
 		}
 
-		eventJSON, err := json.Marshal(event)
-		if err != nil {
-			return
-		}
-
 		// Non-blocking send
 		select {
-		case client.Channel <- string(eventJSON):
+		case client.Channel <- event:
 			// Event sent successfully
 		default:
 			// Channel full, skip this event
@@ -126,14 +120,11 @@ func (em *EventManager) NotifyJukir(jukirID uint, eventType EventType, data inte
 
 // BroadcastToArea sends an event to all jukirs in a specific area
 func (em *EventManager) BroadcastToArea(areaID uint, jukirIDs []uint, eventType EventType, data interface{}) {
+	_ = areaID
+
 	event := Event{
 		Type: eventType,
 		Data: data,
-	}
-
-	eventJSON, err := json.Marshal(event)
-	if err != nil {
-		return
 	}
 
 	em.mu.RLock()
@@ -142,7 +133,7 @@ func (em *EventManager) BroadcastToArea(areaID uint, jukirIDs []uint, eventType 
 	for _, jukirID := range jukirIDs {
 		if client, ok := em.clients[jukirID]; ok {
 			select {
-			case client.Channel <- string(eventJSON):
+			case client.Channel <- event:
 				// Event sent successfully
 			default:
 				// Channel full, skip

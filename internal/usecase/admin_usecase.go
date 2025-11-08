@@ -126,7 +126,7 @@ func parseDateRange(startDateStr, endDateStr string) (*time.Time, *time.Time, er
 }
 
 // getPeriods returns array of period data based on date range with actual and estimated revenue
-func getPeriods(dateRange string, now time.Time, paymentRepo repository.PaymentRepository, sessionRepo repository.ParkingSessionRepository, areaRepo repository.ParkingAreaRepository, regional *string) []map[string]interface{} {
+func getPeriods(dateRange string, now time.Time, sessionRepo repository.ParkingSessionRepository, areaRepo repository.ParkingAreaRepository, regional *string) []map[string]interface{} {
 	switch dateRange {
 	case "bulan_ini": // Last 7 months
 		periods := make([]map[string]interface{}, 7)
@@ -135,9 +135,9 @@ func getPeriods(dateRange string, now time.Time, paymentRepo repository.PaymentR
 			monthsAgo := 6 - i
 			period := now.AddDate(0, -monthsAgo, 0)
 			start := time.Date(period.Year(), period.Month(), 1, 0, 0, 0, 0, now.Location())
-			end := start.AddDate(0, 1, 0).Add(-time.Second)
+			end := start.AddDate(0, 1, 0)
 
-			actualRevenue, _ := paymentRepo.GetRevenueByDateRange(start, end)
+			actualRevenue := calculateActualRevenue(sessionRepo, areaRepo, start, end, regional)
 			estimatedRevenue := calculateEstimatedRevenue(sessionRepo, areaRepo, start, end, regional)
 
 			periods[i] = map[string]interface{}{
@@ -157,7 +157,7 @@ func getPeriods(dateRange string, now time.Time, paymentRepo repository.PaymentR
 			start := time.Date(weekStart.Year(), weekStart.Month(), weekStart.Day(), 0, 0, 0, 0, now.Location())
 			end := start.AddDate(0, 0, 7)
 
-			actualRevenue, _ := paymentRepo.GetRevenueByDateRange(start, end)
+			actualRevenue := calculateActualRevenue(sessionRepo, areaRepo, start, end, regional)
 			estimatedRevenue := calculateEstimatedRevenue(sessionRepo, areaRepo, start, end, regional)
 
 			periods[i] = map[string]interface{}{
@@ -177,7 +177,7 @@ func getPeriods(dateRange string, now time.Time, paymentRepo repository.PaymentR
 			start := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, day.Location())
 			end := start.Add(24 * time.Hour)
 
-			actualRevenue, _ := paymentRepo.GetRevenueByDateRange(start, end)
+			actualRevenue := calculateActualRevenue(sessionRepo, areaRepo, start, end, regional)
 			estimatedRevenue := calculateEstimatedRevenue(sessionRepo, areaRepo, start, end, regional)
 
 			periods[i] = map[string]interface{}{
@@ -193,31 +193,9 @@ func getPeriods(dateRange string, now time.Time, paymentRepo repository.PaymentR
 
 // calculateEstimatedRevenue calculates estimated revenue from active sessions
 func calculateEstimatedRevenue(sessionRepo repository.ParkingSessionRepository, areaRepo repository.ParkingAreaRepository, start, end time.Time, regional *string) float64 {
-	areas, _ := areaRepo.GetActiveAreas()
-	estimatedRevenue := 0.0
-
-	for _, area := range areas {
-		// Filter by regional if specified
-		if regional != nil && *regional != "" && area.Regional != *regional {
-			continue
-		}
-
-		sessions, _ := sessionRepo.GetSessionsByArea(area.ID, start, end)
-		for _, session := range sessions {
-			if session.SessionStatus == entities.SessionStatusActive && session.CheckoutTime == nil {
-				// Active session - estimate based on duration so far
-				minutes := int(time.Since(session.CheckinTime).Minutes())
-				hours := float64(minutes) / 60.0
-				estimatedRevenue += area.HourlyRate * hours
-			} else if session.SessionStatus == entities.SessionStatusPendingPayment && session.TotalCost != nil {
-				estimatedRevenue += *session.TotalCost
-			} else if session.IsManualRecord && session.TotalCost != nil {
-				estimatedRevenue += *session.TotalCost
-			}
-		}
-	}
-
-	return estimatedRevenue
+	// For simplicity, estimated revenue now mirrors confirmed (actual) revenue.
+	// Both metrics only increase once a payment has been confirmed.
+	return calculateActualRevenue(sessionRepo, areaRepo, start, end, regional)
 }
 
 func roundCurrency(value float64) float64 {
@@ -372,7 +350,7 @@ func (u *adminUsecase) GetOverview(vehicleType *string, startTime, endTime *time
 
 	// Get chart data based on date range - using default minggu_ini for chart
 	now := time.Now()
-	chartData := getPeriods("minggu_ini", now, u.paymentRepo, u.sessionRepo, u.areaRepo, nil)
+	chartData := getPeriods("minggu_ini", now, u.sessionRepo, u.areaRepo, nil)
 
 	return map[string]interface{}{
 		"total_users":    len(totalUsers),
@@ -1148,7 +1126,7 @@ func (u *adminUsecase) GetChartDataDetailed(startTime, endTime *time.Time, vehic
 	}
 
 	// Calculate summary for the period
-	actualRevenue, _ := u.paymentRepo.GetRevenueByDateRange(actualStart, actualEnd)
+	actualRevenue := calculateActualRevenue(u.sessionRepo, u.areaRepo, actualStart, actualEnd, regional)
 	estimatedRevenue := calculateEstimatedRevenue(u.sessionRepo, u.areaRepo, actualStart, actualEnd, regional)
 
 	// Add summary to first item or create new structure
@@ -2164,7 +2142,7 @@ func (u *adminUsecase) generateDailyChartData(start, end time.Time, regional *st
 			dayEnd = end
 		}
 
-		actualRevenue, _ := u.paymentRepo.GetRevenueByDateRange(dayStart, dayEnd)
+		actualRevenue := calculateActualRevenue(u.sessionRepo, u.areaRepo, dayStart, dayEnd, regional)
 		estimatedRevenue := calculateEstimatedRevenue(u.sessionRepo, u.areaRepo, dayStart, dayEnd, regional)
 
 		periods = append(periods, map[string]interface{}{
@@ -2204,7 +2182,7 @@ func (u *adminUsecase) generateWeeklyChartData(start, end time.Time, regional *s
 
 		// Only proceed if weekStart is within or before the range
 		if !weekStart.After(end) {
-			actualRevenue, _ := u.paymentRepo.GetRevenueByDateRange(weekStart, weekEnd)
+			actualRevenue := calculateActualRevenue(u.sessionRepo, u.areaRepo, weekStart, weekEnd, regional)
 			estimatedRevenue := calculateEstimatedRevenue(u.sessionRepo, u.areaRepo, weekStart, weekEnd, regional)
 
 			periods = append(periods, map[string]interface{}{
@@ -2247,7 +2225,7 @@ func (u *adminUsecase) generateMonthlyChartData(start, end time.Time, regional *
 			monthEnd = end
 		}
 
-		actualRevenue, _ := u.paymentRepo.GetRevenueByDateRange(monthStart, monthEnd)
+		actualRevenue := calculateActualRevenue(u.sessionRepo, u.areaRepo, monthStart, monthEnd, regional)
 		estimatedRevenue := calculateEstimatedRevenue(u.sessionRepo, u.areaRepo, monthStart, monthEnd, regional)
 
 		periods = append(periods, map[string]interface{}{
@@ -3782,4 +3760,28 @@ func getColumnValue(record []string, colMap map[string]int, colName string) stri
 		return record[idx]
 	}
 	return ""
+}
+
+func calculateActualRevenue(sessionRepo repository.ParkingSessionRepository, areaRepo repository.ParkingAreaRepository, start, end time.Time, regional *string) float64 {
+	areas, _ := areaRepo.GetActiveAreas()
+	actualRevenue := 0.0
+
+	for _, area := range areas {
+		if regional != nil && *regional != "" && area.Regional != *regional {
+			continue
+		}
+
+		sessions, _ := sessionRepo.GetSessionsByArea(area.ID, start, end)
+		for _, session := range sessions {
+			if session.TotalCost == nil {
+				continue
+			}
+
+			if session.PaymentStatus == entities.PaymentStatusPaid || session.SessionStatus == entities.SessionStatusCompleted {
+				actualRevenue += *session.TotalCost
+			}
+		}
+	}
+
+	return actualRevenue
 }

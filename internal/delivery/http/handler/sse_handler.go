@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"fmt"
 	"net/http"
 	"time"
 
@@ -60,23 +59,11 @@ func (h *Handlers) StreamJukirEvents(c *gin.Context) {
 	})
 	c.Writer.Flush()
 
-	// Create ticker for keep-alive (every 30 seconds)
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
 	// Stream events
 	for {
 		select {
 		case event := <-eventChan:
-			// Send event to client
-			fmt.Fprintf(c.Writer, "data: %s\n\n", event)
-			c.Writer.Flush()
-
-		case <-ticker.C:
-			// Send keep-alive ping
-			c.SSEvent("ping", map[string]interface{}{
-				"timestamp": time.Now().Format(time.RFC3339),
-			})
+			c.SSEvent(string(event.Type), event.Data)
 			c.Writer.Flush()
 
 		case <-c.Request.Context().Done():
