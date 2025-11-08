@@ -99,13 +99,13 @@ func (u *parkingUsecase) Checkin(req *entities.CheckinRequest) (*entities.Checki
 		return nil, errors.New("jukir is not active")
 	}
 
-	// Require GPS verification
-	if req.Latitude == nil || req.Longitude == nil {
-		return nil, errors.New("latitude and longitude are required for QR check-in")
-	}
-
-	if err := u.ensureWithinArea(*req.Latitude, *req.Longitude, jukir.Area); err != nil {
-		return nil, err
+	// Optional GPS verification (ignored if not provided)
+	if req.Latitude != nil && req.Longitude != nil {
+		// We no longer block QR check-in when coordinates are missing, but if the client still
+		// sends them we keep the distance check for sanity.
+		if err := u.ensureWithinArea(*req.Latitude, *req.Longitude, jukir.Area); err != nil {
+			return nil, err
+		}
 	}
 
 	// Get current time for check-in
@@ -171,13 +171,11 @@ func (u *parkingUsecase) Checkout(req *entities.CheckoutRequest) (*entities.Chec
 		return nil, errors.New("QR code does not match the check-in location")
 	}
 
-	// Require GPS verification
-	if req.Latitude == nil || req.Longitude == nil {
-		return nil, errors.New("latitude and longitude are required for QR checkout")
-	}
-
-	if err := u.ensureWithinArea(*req.Latitude, *req.Longitude, jukir.Area); err != nil {
-		return nil, err
+	// Optional GPS verification
+	if req.Latitude != nil && req.Longitude != nil {
+		if err := u.ensureWithinArea(*req.Latitude, *req.Longitude, jukir.Area); err != nil {
+			return nil, err
+		}
 	}
 
 	// Calculate duration and cost (FLAT RATE, not per hour)
