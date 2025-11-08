@@ -169,7 +169,7 @@ func (u *parkingUsecase) Checkout(req *entities.CheckoutRequest) (*entities.Chec
 	// Optional GPS verification (skip if coordinates not provided)
 	if req.Latitude != nil && req.Longitude != nil {
 		distance := u.calculateDistance(*req.Latitude, *req.Longitude, jukir.Area.Latitude, jukir.Area.Longitude)
-		if distance > 0.05 { // 50 meters
+		if distance > 0.01 { // 100 meters
 			return nil, errors.New("you must be within 50 meters of the parking area")
 		}
 	}
