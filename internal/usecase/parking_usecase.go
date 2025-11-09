@@ -33,7 +33,7 @@ type parkingUsecase struct {
 }
 
 const (
-	defaultLocationToleranceKM = 0.1 // 100 meters
+	defaultLocationToleranceKM = 0.3 // 100 meters
 )
 
 func NewParkingUsecase(sessionRepo repository.ParkingSessionRepository, areaRepo repository.ParkingAreaRepository, userRepo repository.UserRepository, jukirRepo repository.JukirRepository, paymentRepo repository.PaymentRepository, eventManager *EventManager) ParkingUsecase {
