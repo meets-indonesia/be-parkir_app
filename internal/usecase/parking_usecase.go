@@ -166,7 +166,12 @@ func (u *parkingUsecase) Checkout(req *entities.CheckoutRequest) (*entities.Chec
 		return nil, errors.New("invalid QR code")
 	}
 
-	// Verify it's the same jukir
+	// Ensure the QR belongs to the same parking area
+	if session.AreaID != jukir.AreaID {
+		return nil, errors.New("QR code belongs to a different parking area")
+	}
+
+	// Verify it's the same jukir who performed the check-in
 	if session.JukirID == nil || *session.JukirID != jukir.ID {
 		return nil, errors.New("QR code does not match the check-in location")
 	}
