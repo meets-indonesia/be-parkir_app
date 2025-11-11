@@ -665,7 +665,7 @@ func (u *adminUsecase) GetAllJukirsRevenue(startTime, endTime *time.Time, region
 		// Filter by jukir ID
 		var jukirSessions []entities.ParkingSession
 		for _, session := range allSessions {
-			if session.JukirID != nil && *session.JukirID == jukir.ID {
+			if session.PaymentStatus == entities.PaymentStatusPaid && session.TotalCost != nil {
 				jukirSessions = append(jukirSessions, session)
 			}
 		}
@@ -3187,14 +3187,8 @@ func (u *adminUsecase) ExportAreaActivityCSV(startTime, endTime *time.Time, area
 
 	for _, areaData := range data {
 		areaName := areaData["area_name"].(string)
-		kapasitasMobil := 0
-		if km, ok := areaData["kapasitas_mobil"].(*int); ok && km != nil {
-			kapasitasMobil = *km
-		}
-		kapasitasMotor := 0
-		if km, ok := areaData["kapasitas_motor"].(*int); ok && km != nil {
-			kapasitasMotor = *km
-		}
+		kapasitasMobil := intFromAny(areaData["kapasitas_mobil"])
+		kapasitasMotor := intFromAny(areaData["kapasitas_motor"])
 
 		// Header with area name and capacity
 		buf.WriteString(fmt.Sprintf("%s;;;Kapasitas ;%d;;%s;;;Kapasitas;%d\n",
@@ -3231,8 +3225,8 @@ func (u *adminUsecase) ExportAreaActivityCSV(startTime, endTime *time.Time, area
 		}
 
 		// Total row
-		totalMobil := areaData["total_mobil_datang"].(int)
-		totalMotor := areaData["total_motor_datang"].(int)
+		totalMobil := intFromAny(areaData["total_mobil_datang"])
+		totalMotor := intFromAny(areaData["total_motor_datang"])
 		buf.WriteString(fmt.Sprintf(";%d;;;;;;%d;;;;\n", totalMobil, totalMotor))
 		buf.WriteString("\n")
 	}
@@ -3260,14 +3254,8 @@ func (u *adminUsecase) ExportJukirActivityCSV(startTime, endTime *time.Time, juk
 	for _, jukirData := range data {
 		jukirName := jukirData["jukir_name"].(string)
 		areaName := jukirData["area_name"].(string)
-		kapasitasMobil := 0
-		if km, ok := jukirData["kapasitas_mobil"].(*int); ok && km != nil {
-			kapasitasMobil = *km
-		}
-		kapasitasMotor := 0
-		if km, ok := jukirData["kapasitas_motor"].(*int); ok && km != nil {
-			kapasitasMotor = *km
-		}
+		kapasitasMobil := intFromAny(jukirData["kapasitas_mobil"])
+		kapasitasMotor := intFromAny(jukirData["kapasitas_motor"])
 
 		// Header with jukir name, area name and capacity
 		buf.WriteString(fmt.Sprintf("%s - %s;;;Kapasitas ;%d;;%s - %s;;;Kapasitas;%d\n",
@@ -3304,8 +3292,8 @@ func (u *adminUsecase) ExportJukirActivityCSV(startTime, endTime *time.Time, juk
 		}
 
 		// Total row
-		totalMobil := jukirData["total_mobil_datang"].(int)
-		totalMotor := jukirData["total_motor_datang"].(int)
+		totalMobil := intFromAny(jukirData["total_mobil_datang"])
+		totalMotor := intFromAny(jukirData["total_motor_datang"])
 		buf.WriteString(fmt.Sprintf(";%d;;;;;;%d;;;;\n", totalMobil, totalMotor))
 		buf.WriteString("\n")
 	}
@@ -3315,43 +3303,90 @@ func (u *adminUsecase) ExportJukirActivityCSV(startTime, endTime *time.Time, juk
 
 // ExportAreaActivityDetailXLSX exports area activity detail to XLSX format
 func (u *adminUsecase) ExportAreaActivityDetailXLSX(areaID uint, startTime, endTime *time.Time) (*bytes.Buffer, error) {
-	activityData, err := u.GetAreaActivityDetail(areaID, startTime, endTime)
-	if err != nil {
-		return nil, err
+	loc := getGMT7Location()
+
+	var start, end time.Time
+	if startTime != nil && endTime != nil {
+		start = startTime.In(loc)
+		end = endTime.In(loc)
+	} else {
+		now := time.Now().In(loc)
+		start = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+		end = start
 	}
 
-	// Create new Excel file
+	start = time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, loc)
+	end = time.Date(end.Year(), end.Month(), end.Day(), 23, 59, 59, 999999999, loc)
+
+	if end.Before(start) {
+		return nil, errors.New("end date must be after start date")
+	}
+
 	f := excelize.NewFile()
-	defer func() {
-		if err := f.Close(); err != nil {
-			// Ignore error on close
+	sheetNames := make([]string, 0)
+	dayCounter := 0
+
+	for day := start; !day.After(end); day = day.AddDate(0, 0, 1) {
+		dayCounter++
+		if dayCounter > 7 {
+			return nil, errors.New("date range too large (maximum 7 days)")
 		}
+
+		dayStart := day
+		dayEnd := dayStart.Add(24*time.Hour - time.Nanosecond)
+		ds := dayStart
+		de := dayEnd
+
+		activityData, err := u.GetAreaActivityDetail(areaID, &ds, &de)
+		if err != nil {
+			return nil, err
+		}
+
+		sheetName := dayStart.Format("2006-01-02")
+		if dayCounter == 1 {
+			if err := f.SetSheetName("Sheet1", sheetName); err != nil {
+				return nil, errors.New("failed to rename sheet")
+			}
+		} else {
+			if _, err := f.NewSheet(sheetName); err != nil {
+				return nil, errors.New("failed to create sheet")
+			}
+		}
+
+		if err := writeAreaActivitySheet(f, sheetName, activityData); err != nil {
+			return nil, err
+		}
+
+		sheetNames = append(sheetNames, sheetName)
+	}
+
+	if len(sheetNames) > 0 {
+		if idx, err := f.GetSheetIndex(sheetNames[0]); err == nil {
+			f.SetActiveSheet(idx)
+		}
+	}
+
+	defer func() {
+		_ = f.Close()
 	}()
 
-	sheetName := "Sheet1"
-	index, err := f.NewSheet(sheetName)
-	if err != nil {
-		return nil, errors.New("failed to create sheet")
+	var buf bytes.Buffer
+	if err := f.Write(&buf); err != nil {
+		return nil, errors.New("failed to write Excel file")
 	}
-	f.SetActiveSheet(index)
 
-	// Row counter
+	return &buf, nil
+}
+
+func writeAreaActivitySheet(f *excelize.File, sheetName string, activityData map[string]interface{}) error {
 	row := 1
 
-	// Title
 	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "REKAPITULASI DATA PARKIR")
 	row += 2
 
-	// Area name and capacity
-	areaName := activityData["area_name"].(string)
-	kapasitasMobil := 0
-	if km, ok := activityData["kapasitas_mobil"].(*int); ok && km != nil {
-		kapasitasMobil = *km
-	}
-	kapasitasMotor := 0
-	if km, ok := activityData["kapasitas_motor"].(*int); ok && km != nil {
-		kapasitasMotor = *km
-	}
+	areaName, _ := activityData["area_name"].(string)
+	kapasitasMobil := intFromAny(activityData["kapasitas_mobil"])
+	kapasitasMotor := intFromAny(activityData["kapasitas_motor"])
 
 	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), areaName)
 	f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), "Kapasitas")
@@ -3361,14 +3396,12 @@ func (u *adminUsecase) ExportAreaActivityDetailXLSX(areaID uint, startTime, endT
 	f.SetCellValue(sheetName, fmt.Sprintf("M%d", row), kapasitasMotor)
 	row++
 
-	// Column headers for Mobil
 	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Mobil Penumpang")
 	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), "Jumlah Kendaraan")
 	f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), "Akumulasi")
 	f.SetCellValue(sheetName, fmt.Sprintf("F%d", row), "Volume")
 	f.SetCellValue(sheetName, fmt.Sprintf("G%d", row), "Indeks Parkir")
 
-	// Column headers for Motor
 	f.SetCellValue(sheetName, fmt.Sprintf("H%d", row), "Motor")
 	f.SetCellValue(sheetName, fmt.Sprintf("I%d", row), "Jumlah Kendaraan")
 	f.SetCellValue(sheetName, fmt.Sprintf("L%d", row), "Akumulasi")
@@ -3376,7 +3409,6 @@ func (u *adminUsecase) ExportAreaActivityDetailXLSX(areaID uint, startTime, endT
 	f.SetCellValue(sheetName, fmt.Sprintf("N%d", row), "Indeks Parkir")
 	row++
 
-	// Sub headers
 	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Periode Pengamatan")
 	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), "Datang")
 	f.SetCellValue(sheetName, fmt.Sprintf("C%d", row), "Berangkat")
@@ -3385,9 +3417,8 @@ func (u *adminUsecase) ExportAreaActivityDetailXLSX(areaID uint, startTime, endT
 	f.SetCellValue(sheetName, fmt.Sprintf("J%d", row), "Berangkat")
 	row++
 
-	// Data rows
-	mobilIntervals := activityData["mobil"].([]map[string]interface{})
-	motorIntervals := activityData["motor"].([]map[string]interface{})
+	mobilIntervals, _ := activityData["mobil"].([]map[string]interface{})
+	motorIntervals, _ := activityData["motor"].([]map[string]interface{})
 
 	maxLen := len(mobilIntervals)
 	if len(motorIntervals) > maxLen {
@@ -3418,13 +3449,83 @@ func (u *adminUsecase) ExportAreaActivityDetailXLSX(areaID uint, startTime, endT
 		row++
 	}
 
-	// Total row
-	totalMobil := activityData["total_mobil_datang"].(int)
-	totalMotor := activityData["total_motor_datang"].(int)
+	totalMobil := intFromAny(activityData["total_mobil_datang"])
+	totalMotor := intFromAny(activityData["total_motor_datang"])
 	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), totalMobil)
 	f.SetCellValue(sheetName, fmt.Sprintf("I%d", row), totalMotor)
 
-	// Write to buffer
+	return nil
+}
+
+// ExportJukirActivityDetailXLSX exports jukir activity detail to XLSX format
+func (u *adminUsecase) ExportJukirActivityDetailXLSX(jukirID uint, startTime, endTime *time.Time) (*bytes.Buffer, error) {
+	loc := getGMT7Location()
+
+	var start, end time.Time
+	if startTime != nil && endTime != nil {
+		start = startTime.In(loc)
+		end = endTime.In(loc)
+	} else {
+		now := time.Now().In(loc)
+		start = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+		end = start
+	}
+
+	start = time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, loc)
+	end = time.Date(end.Year(), end.Month(), end.Day(), 23, 59, 59, 999999999, loc)
+
+	if end.Before(start) {
+		return nil, errors.New("end date must be after start date")
+	}
+
+	f := excelize.NewFile()
+	sheetNames := make([]string, 0)
+	dayCounter := 0
+
+	for day := start; !day.After(end); day = day.AddDate(0, 0, 1) {
+		dayCounter++
+		if dayCounter > 7 {
+			return nil, errors.New("date range too large (maximum 7 days)")
+		}
+
+		dayStart := day
+		dayEnd := dayStart.Add(24*time.Hour - time.Nanosecond)
+		ds := dayStart
+		de := dayEnd
+
+		activityData, err := u.GetJukirActivityDetail(jukirID, &ds, &de)
+		if err != nil {
+			return nil, err
+		}
+
+		sheetName := dayStart.Format("2006-01-02")
+		if dayCounter == 1 {
+			if err := f.SetSheetName("Sheet1", sheetName); err != nil {
+				return nil, errors.New("failed to rename sheet")
+			}
+		} else {
+			if _, err := f.NewSheet(sheetName); err != nil {
+				return nil, errors.New("failed to create sheet")
+			}
+		}
+
+		if err := writeJukirActivitySheet(f, sheetName, activityData); err != nil {
+			return nil, err
+		}
+
+		sheetNames = append(sheetNames, sheetName)
+	}
+
+	if len(sheetNames) > 0 {
+		if idx, err := f.GetSheetIndex(sheetNames[0]); err == nil {
+			f.SetActiveSheet(idx)
+		}
+	}
+
+	defer func() {
+		_ = f.Close()
+	}()
+
 	var buf bytes.Buffer
 	if err := f.Write(&buf); err != nil {
 		return nil, errors.New("failed to write Excel file")
@@ -3433,63 +3534,32 @@ func (u *adminUsecase) ExportAreaActivityDetailXLSX(areaID uint, startTime, endT
 	return &buf, nil
 }
 
-// ExportJukirActivityDetailXLSX exports jukir activity detail to XLSX format
-func (u *adminUsecase) ExportJukirActivityDetailXLSX(jukirID uint, startTime, endTime *time.Time) (*bytes.Buffer, error) {
-	activityData, err := u.GetJukirActivityDetail(jukirID, startTime, endTime)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create new Excel file
-	f := excelize.NewFile()
-	defer func() {
-		if err := f.Close(); err != nil {
-			// Ignore error on close
-		}
-	}()
-
-	sheetName := "Sheet1"
-	index, err := f.NewSheet(sheetName)
-	if err != nil {
-		return nil, errors.New("failed to create sheet")
-	}
-	f.SetActiveSheet(index)
-
-	// Row counter
+func writeJukirActivitySheet(f *excelize.File, sheetName string, activityData map[string]interface{}) error {
 	row := 1
 
-	// Title
 	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "REKAPITULASI DATA PARKIR - JUKIR")
 	row += 2
 
-	// Jukir name, area name and capacity
-	jukirName := activityData["jukir_name"].(string)
-	areaName := activityData["area_name"].(string)
-	kapasitasMobil := 0
-	if km, ok := activityData["kapasitas_mobil"].(*int); ok && km != nil {
-		kapasitasMobil = *km
-	}
-	kapasitasMotor := 0
-	if km, ok := activityData["kapasitas_motor"].(*int); ok && km != nil {
-		kapasitasMotor = *km
-	}
+	jukirName, _ := activityData["jukir_name"].(string)
+	areaName, _ := activityData["area_name"].(string)
+	kapasitasMobil := intFromAny(activityData["kapasitas_mobil"])
+	kapasitasMotor := intFromAny(activityData["kapasitas_motor"])
+	title := fmt.Sprintf("%s - %s", jukirName, areaName)
 
-	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("%s - %s", jukirName, areaName))
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), title)
 	f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), "Kapasitas")
 	f.SetCellValue(sheetName, fmt.Sprintf("F%d", row), kapasitasMobil)
-	f.SetCellValue(sheetName, fmt.Sprintf("H%d", row), fmt.Sprintf("%s - %s", jukirName, areaName))
+	f.SetCellValue(sheetName, fmt.Sprintf("H%d", row), title)
 	f.SetCellValue(sheetName, fmt.Sprintf("L%d", row), "Kapasitas")
 	f.SetCellValue(sheetName, fmt.Sprintf("M%d", row), kapasitasMotor)
 	row++
 
-	// Column headers for Mobil
 	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Mobil Penumpang")
 	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), "Jumlah Kendaraan")
 	f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), "Akumulasi")
 	f.SetCellValue(sheetName, fmt.Sprintf("F%d", row), "Volume")
 	f.SetCellValue(sheetName, fmt.Sprintf("G%d", row), "Indeks Parkir")
 
-	// Column headers for Motor
 	f.SetCellValue(sheetName, fmt.Sprintf("H%d", row), "Motor")
 	f.SetCellValue(sheetName, fmt.Sprintf("I%d", row), "Jumlah Kendaraan")
 	f.SetCellValue(sheetName, fmt.Sprintf("L%d", row), "Akumulasi")
@@ -3497,7 +3567,6 @@ func (u *adminUsecase) ExportJukirActivityDetailXLSX(jukirID uint, startTime, en
 	f.SetCellValue(sheetName, fmt.Sprintf("N%d", row), "Indeks Parkir")
 	row++
 
-	// Sub headers
 	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Periode Pengamatan")
 	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), "Datang")
 	f.SetCellValue(sheetName, fmt.Sprintf("C%d", row), "Berangkat")
@@ -3506,9 +3575,8 @@ func (u *adminUsecase) ExportJukirActivityDetailXLSX(jukirID uint, startTime, en
 	f.SetCellValue(sheetName, fmt.Sprintf("J%d", row), "Berangkat")
 	row++
 
-	// Data rows
-	mobilIntervals := activityData["mobil"].([]map[string]interface{})
-	motorIntervals := activityData["motor"].([]map[string]interface{})
+	mobilIntervals, _ := activityData["mobil"].([]map[string]interface{})
+	motorIntervals, _ := activityData["motor"].([]map[string]interface{})
 
 	maxLen := len(mobilIntervals)
 	if len(motorIntervals) > maxLen {
@@ -3539,19 +3607,46 @@ func (u *adminUsecase) ExportJukirActivityDetailXLSX(jukirID uint, startTime, en
 		row++
 	}
 
-	// Total row
-	totalMobil := activityData["total_mobil_datang"].(int)
-	totalMotor := activityData["total_motor_datang"].(int)
+	totalMobil := intFromAny(activityData["total_mobil_datang"])
+	totalMotor := intFromAny(activityData["total_motor_datang"])
 	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), totalMobil)
 	f.SetCellValue(sheetName, fmt.Sprintf("I%d", row), totalMotor)
 
-	// Write to buffer
-	var buf bytes.Buffer
-	if err := f.Write(&buf); err != nil {
-		return nil, errors.New("failed to write Excel file")
-	}
+	return nil
+}
 
-	return &buf, nil
+func intFromAny(value interface{}) int {
+	switch v := value.(type) {
+	case int:
+		return v
+	case *int:
+		if v != nil {
+			return *v
+		}
+	case int32:
+		return int(v)
+	case *int32:
+		if v != nil {
+			return int(*v)
+		}
+	case int64:
+		return int(v)
+	case *int64:
+		if v != nil {
+			return int(*v)
+		}
+	case uint:
+		return int(v)
+	case *uint:
+		if v != nil {
+			return int(*v)
+		}
+	case float32:
+		return int(v)
+	case float64:
+		return int(v)
+	}
+	return 0
 }
 
 // ImportAreasAndJukirsFromCSV imports parking areas and jukirs from CSV file
