@@ -113,6 +113,7 @@ func SetupRoutes(router *gin.Engine, handlers *handler.Handlers, jwtConfig useca
 			admin.GET("/revenue-table", handlers.GetRevenueTable)
 			admin.GET("/revenue/export", handlers.ExportRevenueReport)
 			admin.POST("/import/areas-jukirs", handlers.ImportAreasAndJukirsFromCSV)
+			admin.GET("/activity-logs", handlers.GetActivityLogs)
 			admin.GET("/files/*path", handlers.DownloadFile)        // Proxy endpoint untuk download file dari MinIO
 			admin.GET("/sse-status", handlers.GetEventStreamStatus) // SSE connection status
 		}

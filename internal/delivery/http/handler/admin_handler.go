@@ -2487,3 +2487,120 @@ func (h *Handlers) ImportAreasAndJukirsFromCSV(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "CSV imported successfully", "data": result})
 }
+
+// GetActivityLogs godoc
+// @Summary Get detailed activity logs
+// @Description Get checkin and checkout activity logs filtered by jukir or parking area
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param jukir_id query int false "Filter by jukir ID"
+// @Param area_id query int false "Filter by parking area ID"
+// @Param start_date query string false "Start date (DD-MM-YYYY)"
+// @Param end_date query string false "End date (DD-MM-YYYY)"
+// @Param limit query int false "Limit" default(20)
+// @Param offset query int false "Offset" default(0)
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
+// @Router /api/v1/admin/activity-logs [get]
+func (h *Handlers) GetActivityLogs(c *gin.Context) {
+	limitStr := c.DefaultQuery("limit", "20")
+	offsetStr := c.DefaultQuery("offset", "0")
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid limit",
+		})
+		return
+	}
+
+	offset, err := strconv.Atoi(offsetStr)
+	if err != nil || offset < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid offset",
+		})
+		return
+	}
+
+	var jukirID *uint
+	if jukirIDStr := c.Query("jukir_id"); jukirIDStr != "" {
+		id, err := strconv.ParseUint(jukirIDStr, 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "Invalid jukir_id",
+			})
+			return
+		}
+		parsed := uint(id)
+		jukirID = &parsed
+	}
+
+	var areaID *uint
+	if areaIDStr := c.Query("area_id"); areaIDStr != "" {
+		id, err := strconv.ParseUint(areaIDStr, 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "Invalid area_id",
+			})
+			return
+		}
+		parsed := uint(id)
+		areaID = &parsed
+	}
+
+	if jukirID == nil && areaID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Either jukir_id or area_id is required",
+		})
+		return
+	}
+
+	startPtr, endPtr, err := parseDateFilter(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	loc := getGMT7Location()
+	var startTime, endTime time.Time
+	if startPtr != nil && endPtr != nil {
+		startTime = startPtr.In(loc)
+		endTime = endPtr.In(loc).Add(time.Nanosecond)
+	} else {
+		now := time.Now().In(loc)
+		startTime = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+		endTime = startTime.Add(24 * time.Hour)
+	}
+
+	response, err := h.AdminUC.GetActivityLogs(jukirID, areaID, startTime, endTime, limit, offset)
+	if err != nil {
+		h.Logger.Error("Failed to get activity logs:", err)
+		status := http.StatusInternalServerError
+		if err.Error() == "either jukir_id or area_id is required" {
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Activity logs retrieved successfully",
+		"data":    response,
+	})
+}

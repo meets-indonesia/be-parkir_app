@@ -10,6 +10,7 @@ import (
 	"io"
 	"math"
 	"math/rand"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -55,6 +56,7 @@ type AdminUsecase interface {
 	ExportJukirActivityCSV(startTime, endTime *time.Time, jukirID *uint, regional *string) (*bytes.Buffer, error)
 	ExportAreaActivityDetailXLSX(areaID uint, startTime, endTime *time.Time) (*bytes.Buffer, error)
 	ExportJukirActivityDetailXLSX(jukirID uint, startTime, endTime *time.Time) (*bytes.Buffer, error)
+	GetActivityLogs(jukirID *uint, areaID *uint, startTime, endTime time.Time, limit, offset int) (*entities.ActivityLogResponse, error)
 	ImportAreasAndJukirsFromCSV(reader io.Reader, regional string) (map[string]interface{}, error)
 }
 
@@ -3784,4 +3786,121 @@ func calculateActualRevenue(sessionRepo repository.ParkingSessionRepository, are
 	}
 
 	return actualRevenue
+}
+
+func (u *adminUsecase) GetActivityLogs(jukirID *uint, areaID *uint, startTime, endTime time.Time, limit, offset int) (*entities.ActivityLogResponse, error) {
+	if jukirID == nil && areaID == nil {
+		return nil, errors.New("either jukir_id or area_id is required")
+	}
+
+	if limit <= 0 {
+		limit = 20
+	}
+
+	if offset < 0 {
+		offset = 0
+	}
+
+	sessions, err := u.sessionRepo.GetSessionsForActivityLog(jukirID, areaID, startTime, endTime)
+	if err != nil {
+		return nil, err
+	}
+
+	location := startTime.Location()
+	events := make([]entities.ActivityLogItem, 0, len(sessions)*2)
+
+	for _, session := range sessions {
+		var areaInfo *entities.ActivityLogArea
+		if session.Area.ID != 0 {
+			areaCopy := entities.ActivityLogArea{
+				ID:   session.Area.ID,
+				Name: session.Area.Name,
+			}
+			areaInfo = &areaCopy
+		}
+
+		var jukirInfo *entities.ActivityLogJukir
+		if session.Jukir != nil {
+			jukirName := session.Jukir.User.Name
+			jukirCopy := entities.ActivityLogJukir{
+				ID:        session.Jukir.ID,
+				Name:      jukirName,
+				JukirCode: session.Jukir.JukirCode,
+			}
+			jukirInfo = &jukirCopy
+		}
+
+		var sessionID *uint
+		if !session.IsManualRecord {
+			sid := session.ID
+			sessionID = &sid
+		}
+
+		platNomor := session.PlatNomor
+
+		if !session.CheckinTime.Before(startTime) && session.CheckinTime.Before(endTime) {
+			events = append(events, entities.ActivityLogItem{
+				EventTime:   session.CheckinTime.In(location),
+				EventType:   entities.ActivityEventCheckin,
+				SessionID:   sessionID,
+				PlatNomor:   platNomor,
+				VehicleType: string(session.VehicleType),
+				IsManual:    session.IsManualRecord,
+				Jukir:       jukirInfo,
+				Area:        areaInfo,
+			})
+		}
+
+		if session.CheckoutTime != nil && !session.CheckoutTime.Before(startTime) && session.CheckoutTime.Before(endTime) {
+			events = append(events, entities.ActivityLogItem{
+				EventTime:   session.CheckoutTime.In(location),
+				EventType:   entities.ActivityEventCheckout,
+				SessionID:   sessionID,
+				PlatNomor:   platNomor,
+				VehicleType: string(session.VehicleType),
+				IsManual:    session.IsManualRecord,
+				Jukir:       jukirInfo,
+				Area:        areaInfo,
+			})
+		}
+	}
+
+	sort.Slice(events, func(i, j int) bool {
+		if events[i].EventTime.Equal(events[j].EventTime) {
+			return string(events[i].EventType) < string(events[j].EventType)
+		}
+		return events[i].EventTime.After(events[j].EventTime)
+	})
+
+	total := len(events)
+	if offset > total {
+		offset = total
+	}
+
+	endIndex := offset + limit
+	if endIndex > total {
+		endIndex = total
+	}
+
+	paged := events[offset:endIndex]
+
+	endInclusive := endTime.Add(-time.Nanosecond)
+	if endInclusive.Before(startTime) {
+		endInclusive = startTime
+	}
+
+	meta := entities.ActivityLogMeta{
+		Total:     total,
+		Limit:     limit,
+		Offset:    offset,
+		StartDate: startTime.In(location).Format("2006-01-02"),
+		EndDate:   endInclusive.In(location).Format("2006-01-02"),
+		JukirID:   jukirID,
+		AreaID:    areaID,
+	}
+
+	return &entities.ActivityLogResponse{
+		Activities: paged,
+		Meta:       meta,
+	}, nil
 }

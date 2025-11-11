@@ -20,6 +20,7 @@ type ParkingSessionRepository interface {
 	GetSessionsByArea(areaID uint, startDate, endDate time.Time) ([]entities.ParkingSession, error)
 	GetSessionsByJukir(jukirID uint, startDate, endDate time.Time) ([]entities.ParkingSession, error)
 	GetAllSessions(limit, offset int, filters map[string]interface{}) ([]entities.ParkingSession, int64, error)
+	GetSessionsForActivityLog(jukirID *uint, areaID *uint, startDate, endDate time.Time) ([]entities.ParkingSession, error)
 }
 
 type parkingSessionRepository struct {
@@ -149,4 +150,26 @@ func (r *parkingSessionRepository) GetAllSessions(limit, offset int, filters map
 		Order("created_at DESC").
 		Limit(limit).Offset(offset).Find(&sessions).Error
 	return sessions, count, err
+}
+
+func (r *parkingSessionRepository) GetSessionsForActivityLog(jukirID *uint, areaID *uint, startDate, endDate time.Time) ([]entities.ParkingSession, error) {
+	var sessions []entities.ParkingSession
+
+	query := r.db.Preload("Jukir").Preload("Jukir.User").Preload("Area").Preload("Payment")
+
+	if jukirID != nil {
+		query = query.Where("jukir_id = ?", *jukirID)
+	}
+
+	if areaID != nil {
+		query = query.Where("area_id = ?", *areaID)
+	}
+
+	query = query.Where(
+		"(checkin_time >= ? AND checkin_time < ?) OR (checkout_time IS NOT NULL AND checkout_time >= ? AND checkout_time < ?)",
+		startDate, endDate, startDate, endDate,
+	)
+
+	err := query.Order("checkin_time ASC").Find(&sessions).Error
+	return sessions, err
 }
