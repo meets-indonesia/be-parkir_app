@@ -25,7 +25,7 @@ const (
 type ParkingArea struct {
 	ID                uint           `json:"id" gorm:"primaryKey"`
 	Name              string         `json:"name" gorm:"not null" validate:"required,min=2,max=100"`
-	Address           string         `json:"address" gorm:"not null" validate:"required,min=10,max=255"`
+	Address           string         `json:"address" gorm:"not null" validate:"required"`
 	Latitude          float64        `json:"latitude" gorm:"not null" validate:"required,latitude"`
 	Longitude         float64        `json:"longitude" gorm:"not null" validate:"required,longitude"`
 	Regional          string         `json:"regional" gorm:"type:varchar(50)" validate:"required,max=50"`
@@ -47,7 +47,7 @@ type ParkingArea struct {
 
 type CreateParkingAreaRequest struct {
 	Name      string  `json:"name" validate:"required,min=2,max=100"`
-	Address   string  `json:"address" validate:"required,min=10,max=255"`
+	Address   string  `json:"address" validate:"required"`
 	Latitude  float64 `json:"latitude" validate:"required,latitude"`
 	Longitude float64 `json:"longitude" validate:"required,longitude"`
 	Regional  string  `json:"regional" validate:"required,max=50"`
@@ -61,7 +61,7 @@ type CreateParkingAreaRequest struct {
 
 type UpdateParkingAreaRequest struct {
 	Name      *string  `json:"name,omitempty" validate:"omitempty,min=2,max=100"`
-	Address   *string  `json:"address,omitempty" validate:"omitempty,min=10,max=255"`
+	Address   *string  `json:"address,omitempty" validate:"omitempty"`
 	Latitude  *float64 `json:"latitude,omitempty" validate:"omitempty,latitude"`
 	Longitude *float64 `json:"longitude,omitempty" validate:"omitempty,longitude"`
 	Regional  *string  `json:"regional,omitempty" validate:"omitempty,max=50"`

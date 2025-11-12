@@ -33,8 +33,25 @@ type parkingUsecase struct {
 }
 
 const (
-	defaultLocationToleranceKM = 0.3 // 100 meters
+	defaultLocationToleranceKM = 0.3
+	operationalStartHour       = 6
+	operationalEndHour         = 18
 )
+
+var errOutsideOperationalHours = errors.New("operational hours are between 06:00 and 18:00 WIB")
+
+func isWithinOperationalHours(t time.Time) bool {
+	local := t.In(getGMT7Location())
+	hour := local.Hour()
+	return hour >= operationalStartHour && hour < operationalEndHour
+}
+
+func ensureOperationalHours(t time.Time) error {
+	if !isWithinOperationalHours(t) {
+		return errOutsideOperationalHours
+	}
+	return nil
+}
 
 func NewParkingUsecase(sessionRepo repository.ParkingSessionRepository, areaRepo repository.ParkingAreaRepository, userRepo repository.UserRepository, jukirRepo repository.JukirRepository, paymentRepo repository.PaymentRepository, eventManager *EventManager) ParkingUsecase {
 	return &parkingUsecase{
@@ -110,6 +127,9 @@ func (u *parkingUsecase) Checkin(req *entities.CheckinRequest) (*entities.Checki
 
 	// Get current time for check-in
 	checkinTime := nowGMT7()
+	if err := ensureOperationalHours(checkinTime); err != nil {
+		return nil, err
+	}
 
 	// Create parking session
 	session := &entities.ParkingSession{
@@ -184,7 +204,10 @@ func (u *parkingUsecase) Checkout(req *entities.CheckoutRequest) (*entities.Chec
 	}
 
 	// Calculate duration and cost (FLAT RATE, not per hour)
-	checkoutTime := nowGMT7() // Use GMT+7 timezone
+	checkoutTime := nowGMT7()
+	if err := ensureOperationalHours(checkoutTime); err != nil {
+		return nil, err
+	}
 	duration := int(checkoutTime.Sub(session.CheckinTime).Minutes())
 	if duration < 0 {
 		duration = 0 // Handle edge case
@@ -377,6 +400,9 @@ func (u *parkingUsecase) ManualCheckin(jukirID uint, req *entities.ManualCheckin
 	// Ensure waktu_masuk is in GMT+7 timezone
 	gmt7Loc := getGMT7Location()
 	checkinTime := req.WaktuMasuk.In(gmt7Loc)
+	if err := ensureOperationalHours(checkinTime); err != nil {
+		return nil, err
+	}
 
 	// Validate GPS coordinates (manual check-in requires location confirmation)
 	if req.Latitude == nil || req.Longitude == nil {
@@ -449,8 +475,14 @@ func (u *parkingUsecase) ManualCheckout(jukirID uint, req *entities.ManualChecko
 		return nil, err
 	}
 
+	gmt7Loc := getGMT7Location()
+	checkoutTime := req.WaktuKeluar.In(gmt7Loc)
+	if err := ensureOperationalHours(checkoutTime); err != nil {
+		return nil, err
+	}
+
 	// Calculate duration and cost (FLAT RATE, not per hour)
-	duration := int(req.WaktuKeluar.Sub(session.CheckinTime).Minutes())
+	duration := int(checkoutTime.Sub(session.CheckinTime).Minutes())
 	if duration < 0 {
 		duration = 0 // Handle edge case
 	}
@@ -458,11 +490,10 @@ func (u *parkingUsecase) ManualCheckout(jukirID uint, req *entities.ManualChecko
 	totalCost := session.Area.HourlyRate // Flat rate, bukan hourly rate
 
 	// For manual checkout, payment is automatically confirmed (no pending payment step)
-	now := time.Now()
-	confirmedAt := now
+	confirmedAt := nowGMT7()
 
 	// Update session - directly mark as completed since manual checkout means payment is already received
-	session.CheckoutTime = &req.WaktuKeluar
+	session.CheckoutTime = &checkoutTime
 	session.Duration = &duration
 	session.TotalCost = &totalCost
 	session.SessionStatus = entities.SessionStatusCompleted
@@ -499,7 +530,7 @@ func (u *parkingUsecase) ManualCheckout(jukirID uint, req *entities.ManualChecko
 		OldStatus:    string(entities.SessionStatusActive),
 		NewStatus:    string(entities.SessionStatusCompleted),
 		TotalCost:    totalCost,
-		CheckoutTime: req.WaktuKeluar.Format(time.RFC3339),
+		CheckoutTime: checkoutTime.Format(time.RFC3339),
 		CheckinTime:  session.CheckinTime.Format(time.RFC3339),
 	}
 
@@ -521,7 +552,7 @@ func (u *parkingUsecase) ManualCheckout(jukirID uint, req *entities.ManualChecko
 		PlatNomor:     platNomor,
 		VehicleType:   string(session.VehicleType),
 		WaktuMasuk:    session.CheckinTime,
-		WaktuKeluar:   req.WaktuKeluar,
+		WaktuKeluar:   checkoutTime,
 		Duration:      duration,
 		TotalCost:     totalCost,
 		PaymentStatus: string(entities.PaymentStatusPaid),
