@@ -1200,7 +1200,7 @@ func (h *Handlers) GetJukirActivity(c *gin.Context) {
 
 // GetJukirActivityDetail godoc
 // @Summary Get detailed jukir activity monitoring by ID
-// @Description Get detailed activity monitoring data for a specific jukir with 15-minute intervals breakdown (9am-5pm)
+// @Description Get detailed activity monitoring data for a specific jukir with 15-minute intervals breakdown (06:00-18:00)
 // @Tags admin
 // @Accept json
 // @Produce json
