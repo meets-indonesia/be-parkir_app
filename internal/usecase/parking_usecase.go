@@ -190,22 +190,28 @@ func (u *parkingUsecase) Checkout(req *entities.CheckoutRequest) (*entities.Chec
 	// Biaya parkir adalah FLAT RATE (bukan per jam)
 	totalCost := session.Area.HourlyRate // Flat rate, bukan hourly rate
 
-	// Update session
+	// For QR checkout, payment is automatically confirmed (no pending payment step)
+	confirmedAt := nowGMT7()
+
+	// Update session - directly mark as completed since checkout means payment is already received
 	session.CheckoutTime = &checkoutTime
 	session.Duration = &duration
 	session.TotalCost = &totalCost
-	session.SessionStatus = entities.SessionStatusPendingPayment
+	session.SessionStatus = entities.SessionStatusCompleted
+	session.PaymentStatus = entities.PaymentStatusPaid
 
 	if err := u.sessionRepo.Update(session); err != nil {
 		return nil, errors.New("failed to update parking session")
 	}
 
-	// Create payment record
+	// Create payment record - directly mark as paid (no pending confirmation needed)
 	payment := &entities.Payment{
 		SessionID:     session.ID,
 		Amount:        totalCost,
 		PaymentMethod: entities.PaymentMethodCash,
-		Status:        entities.PaymentStatusPending,
+		Status:        entities.PaymentStatusPaid,
+		ConfirmedBy:   &jukir.ID,
+		ConfirmedAt:   &confirmedAt,
 	}
 
 	if err := u.paymentRepo.Create(payment); err != nil {
@@ -224,7 +230,7 @@ func (u *parkingUsecase) Checkout(req *entities.CheckoutRequest) (*entities.Chec
 			PlatNomor:    platNomor,
 			VehicleType:  string(session.VehicleType),
 			OldStatus:    string(entities.SessionStatusActive),
-			NewStatus:    string(entities.SessionStatusPendingPayment),
+			NewStatus:    string(entities.SessionStatusCompleted),
 			TotalCost:    totalCost,
 			CheckoutTime: checkoutTime.Format(time.RFC3339),
 			CheckinTime:  session.CheckinTime.Format(time.RFC3339),
@@ -238,7 +244,7 @@ func (u *parkingUsecase) Checkout(req *entities.CheckoutRequest) (*entities.Chec
 		CheckoutTime:  checkoutTime,
 		Duration:      duration,
 		TotalCost:     totalCost,
-		PaymentStatus: string(entities.PaymentStatusPending),
+		PaymentStatus: string(entities.PaymentStatusPaid),
 	}, nil
 }
 
@@ -504,17 +510,6 @@ func (u *parkingUsecase) ManualCheckout(jukirID uint, req *entities.ManualChecko
 	}
 
 	u.eventManager.NotifyJukir(jukirID, EventSessionUpdate, eventData)
-
-	// Also notify payment confirmation
-	paymentEventData := PaymentConfirmedEvent{
-		SessionID:     session.ID,
-		PaymentID:     payment.ID,
-		Amount:        totalCost,
-		PaymentMethod: string(entities.PaymentMethodCash),
-		ConfirmedBy:   fmt.Sprintf("%d", jukirID),
-		ConfirmedAt:   confirmedAt.Format(time.RFC3339),
-	}
-	u.eventManager.NotifyJukir(jukirID, EventPaymentConfirmed, paymentEventData)
 
 	return &entities.ManualCheckoutResponse{
 		SessionID:     session.ID,

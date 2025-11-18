@@ -40,19 +40,6 @@ type Payment struct {
 	Jukir   *Jukir         `json:"jukir,omitempty" gorm:"foreignKey:ConfirmedBy"`
 }
 
-type ConfirmPaymentRequest struct {
-	SessionID     uint          `json:"session_id" validate:"required"`
-	PaymentMethod PaymentMethod `json:"payment_method" validate:"required,oneof=cash qris bank_transfer"`
-}
-
-type ConfirmPaymentResponse struct {
-	PaymentID     uint          `json:"payment_id"`
-	Amount        float64       `json:"amount"`
-	PaymentMethod PaymentMethod `json:"payment_method"`
-	ConfirmedAt   time.Time     `json:"confirmed_at"`
-	Status        PaymentStatus `json:"status"`
-}
-
 type PendingPaymentResponse struct {
 	SessionID     uint      `json:"session_id"`
 	PlatNomor     string    `json:"plat_nomor"`

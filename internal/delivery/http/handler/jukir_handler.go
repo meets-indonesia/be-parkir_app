@@ -141,69 +141,6 @@ func (h *Handlers) GetActiveSessions(c *gin.Context) {
 	})
 }
 
-// ConfirmPayment godoc
-// @Summary Confirm payment
-// @Description Confirm cash payment from customer
-// @Tags jukir
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param request body entities.ConfirmPaymentRequest true "Payment confirmation data"
-// @Success 200 {object} map[string]interface{}
-// @Failure 400 {object} map[string]interface{}
-// @Failure 401 {object} map[string]interface{}
-// @Failure 500 {object} map[string]interface{}
-// @Router /api/v1/jukir/confirm-payment [post]
-func (h *Handlers) ConfirmPayment(c *gin.Context) {
-	jukirID, exists := c.Get("jukir_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "Jukir not authenticated",
-		})
-		return
-	}
-
-	var req entities.ConfirmPaymentRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.Logger.Error("Failed to bind JSON:", err)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid request data",
-			"error":   err.Error(),
-		})
-		return
-	}
-
-	// Validate request
-	validate := validator.New()
-	if err := validate.Struct(req); err != nil {
-		h.Logger.Error("Validation failed:", err)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Validation failed",
-			"error":   err.Error(),
-		})
-		return
-	}
-
-	response, err := h.JukirUC.ConfirmPayment(jukirID.(uint), &req)
-	if err != nil {
-		h.Logger.Error("Payment confirmation failed:", err)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Payment confirmed successfully",
-		"data":    response,
-	})
-}
-
 // GetQRCode godoc
 // @Summary Get QR code info
 // @Description Get jukir's QR code information

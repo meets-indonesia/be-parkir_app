@@ -66,7 +66,6 @@ func SetupRoutes(router *gin.Engine, handlers *handler.Handlers, jwtConfig useca
 			jukir.GET("/pending-payments", handlers.GetPendingPayments)
 			jukir.GET("/active-sessions", handlers.GetActiveSessions)
 			jukir.GET("/vehicle-breakdown", handlers.GetVehicleBreakdown)
-			jukir.POST("/confirm-payment", handlers.ConfirmPayment)
 			jukir.GET("/qr-code", handlers.GetQRCode)
 			jukir.GET("/daily-report", handlers.GetDailyReport)
 			jukir.POST("/manual-checkin", handlers.ManualCheckin)

@@ -11,7 +11,6 @@ type JukirUsecase interface {
 	GetDashboard(jukirID uint) (*entities.JukirDashboardResponse, error)
 	GetPendingPayments(jukirID uint) ([]entities.PendingPaymentResponse, error)
 	GetActiveSessions(jukirID uint, vehicleType *entities.VehicleType) ([]entities.ActiveSessionResponse, error)
-	ConfirmPayment(jukirID uint, req *entities.ConfirmPaymentRequest) (*entities.ConfirmPaymentResponse, error)
 	GetQRCode(jukirID uint) (*entities.JukirQRResponse, error)
 	GetDailyReport(jukirID uint, date time.Time) (*entities.DailyReportResponse, error)
 	GetJukirByUserID(userID uint) (*entities.Jukir, error)
@@ -141,77 +140,6 @@ func (u *jukirUsecase) GetActiveSessions(jukirID uint, vehicleType *entities.Veh
 	}
 
 	return activeSessions, nil
-}
-
-func (u *jukirUsecase) ConfirmPayment(jukirID uint, req *entities.ConfirmPaymentRequest) (*entities.ConfirmPaymentResponse, error) {
-	// Get session
-	session, err := u.sessionRepo.GetByID(req.SessionID)
-	if err != nil {
-		return nil, errors.New("session not found")
-	}
-
-	// Verify session belongs to this jukir
-	if session.JukirID == nil || *session.JukirID != jukirID {
-		return nil, errors.New("session does not belong to this jukir")
-	}
-
-	// Check if session is in pending payment status
-	if session.SessionStatus != entities.SessionStatusPendingPayment {
-		return nil, errors.New("session is not in pending payment status")
-	}
-
-	// Get or create payment record
-	payment, err := u.paymentRepo.GetBySessionID(req.SessionID)
-	if err != nil {
-		// Create new payment record
-		payment = &entities.Payment{
-			SessionID:     req.SessionID,
-			Amount:        *session.TotalCost,
-			PaymentMethod: req.PaymentMethod,
-			Status:        entities.PaymentStatusPaid,
-			ConfirmedBy:   &jukirID,
-			ConfirmedAt:   &[]time.Time{time.Now()}[0],
-		}
-		if err := u.paymentRepo.Create(payment); err != nil {
-			return nil, errors.New("failed to create payment record")
-		}
-	} else {
-		// Update existing payment record
-		payment.PaymentMethod = req.PaymentMethod
-		payment.Status = entities.PaymentStatusPaid
-		payment.ConfirmedBy = &jukirID
-		payment.ConfirmedAt = &[]time.Time{time.Now()}[0]
-		if err := u.paymentRepo.Update(payment); err != nil {
-			return nil, errors.New("failed to update payment record")
-		}
-	}
-
-	// Update session status
-	session.SessionStatus = entities.SessionStatusCompleted
-	session.PaymentStatus = entities.PaymentStatusPaid
-	if err := u.sessionRepo.Update(session); err != nil {
-		return nil, errors.New("failed to update session status")
-	}
-
-	// Notify jukir about payment confirmation via SSE
-	eventData := PaymentConfirmedEvent{
-		SessionID:     session.ID,
-		PaymentID:     payment.ID,
-		PaymentMethod: string(payment.PaymentMethod),
-		Amount:        payment.Amount,
-		ConfirmedBy:   "Jukir",
-		ConfirmedAt:   payment.ConfirmedAt.Format(time.RFC3339),
-	}
-
-	u.eventManager.NotifyJukir(jukirID, EventPaymentConfirmed, eventData)
-
-	return &entities.ConfirmPaymentResponse{
-		PaymentID:     payment.ID,
-		Amount:        payment.Amount,
-		PaymentMethod: payment.PaymentMethod,
-		ConfirmedAt:   *payment.ConfirmedAt,
-		Status:        payment.Status,
-	}, nil
 }
 
 func (u *jukirUsecase) GetQRCode(jukirID uint) (*entities.JukirQRResponse, error) {
