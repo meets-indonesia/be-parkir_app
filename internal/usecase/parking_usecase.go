@@ -109,20 +109,39 @@ func (u *parkingUsecase) Checkin(req *entities.CheckinRequest) (*entities.Checki
 	// Get current time for check-in
 	checkinTime := nowGMT7()
 
-	// Create parking session
+	// Biaya parkir adalah FLAT RATE (bukan per jam)
+	totalCost := jukir.Area.HourlyRate // Flat rate
+
+	// Create parking session - payment is recorded at checkin
 	session := &entities.ParkingSession{
 		JukirID:        &jukir.ID,
 		AreaID:         jukir.AreaID,
 		VehicleType:    req.VehicleType,
 		PlatNomor:      req.PlatNomor, // Optional for QR-based sessions
 		IsManualRecord: false,
-		CheckinTime:    checkinTime, // Use GMT+7 timezone
-		PaymentStatus:  entities.PaymentStatusPending,
+		CheckinTime:    checkinTime,                // Use GMT+7 timezone
+		TotalCost:      &totalCost,                 // Set cost at checkin (flat rate)
+		PaymentStatus:  entities.PaymentStatusPaid, // Payment recorded at checkin
 		SessionStatus:  entities.SessionStatusActive,
 	}
 
 	if err := u.sessionRepo.Create(session); err != nil {
 		return nil, errors.New("failed to create parking session")
+	}
+
+	// Create payment record - payment is recorded at checkin
+	confirmedAt := nowGMT7()
+	payment := &entities.Payment{
+		SessionID:     session.ID,
+		Amount:        totalCost,
+		PaymentMethod: entities.PaymentMethodCash,
+		Status:        entities.PaymentStatusPaid,
+		ConfirmedBy:   &jukir.ID,
+		ConfirmedAt:   &confirmedAt,
+	}
+
+	if err := u.paymentRepo.Create(payment); err != nil {
+		return nil, errors.New("failed to create payment record")
 	}
 
 	return &entities.CheckinResponse{
@@ -391,7 +410,10 @@ func (u *parkingUsecase) ManualCheckin(jukirID uint, req *entities.ManualCheckin
 		return nil, err
 	}
 
-	// Create manual parking session
+	// Biaya parkir adalah FLAT RATE (bukan per jam)
+	totalCost := jukir.Area.HourlyRate // Flat rate
+
+	// Create manual parking session - payment is recorded at checkin
 	session := &entities.ParkingSession{
 		JukirID:        &jukir.ID,
 		AreaID:         jukir.AreaID,
@@ -399,12 +421,28 @@ func (u *parkingUsecase) ManualCheckin(jukirID uint, req *entities.ManualCheckin
 		PlatNomor:      &req.PlatNomor,
 		IsManualRecord: true,
 		CheckinTime:    checkinTime,
-		PaymentStatus:  entities.PaymentStatusPending,
+		TotalCost:      &totalCost,                 // Set cost at checkin (flat rate)
+		PaymentStatus:  entities.PaymentStatusPaid, // Payment recorded at checkin
 		SessionStatus:  entities.SessionStatusActive,
 	}
 
 	if err := u.sessionRepo.Create(session); err != nil {
 		return nil, errors.New("failed to create manual parking session")
+	}
+
+	// Create payment record - payment is recorded at checkin
+	confirmedAt := nowGMT7()
+	payment := &entities.Payment{
+		SessionID:     session.ID,
+		Amount:        totalCost,
+		PaymentMethod: entities.PaymentMethodCash,
+		Status:        entities.PaymentStatusPaid,
+		ConfirmedBy:   &jukirID,
+		ConfirmedAt:   &confirmedAt,
+	}
+
+	if err := u.paymentRepo.Create(payment); err != nil {
+		return nil, errors.New("failed to create payment record")
 	}
 
 	platNomor := ""
