@@ -121,9 +121,8 @@ func (u *jukirUsecase) GetActiveSessions(jukirID uint, vehicleType *entities.Veh
 			durationMinutes = 0 // If checkin_time is in future, set duration to 0
 		}
 
-		// Biaya parkir adalah FLAT RATE (tidak per jam)
-		// HourlyRate sebenarnya adalah flat rate untuk sekali parkir
-		currentCost := session.Area.HourlyRate // Flat rate, tidak dikali jam
+		// Biaya parkir adalah FLAT RATE (tidak per jam) - berbeda untuk mobil dan motor
+		currentCost := session.Area.GetRateByVehicleType(session.VehicleType) // Flat rate berdasarkan jenis kendaraan
 		if currentCost < 0 {
 			currentCost = 0
 		}
@@ -133,7 +132,7 @@ func (u *jukirUsecase) GetActiveSessions(jukirID uint, vehicleType *entities.Veh
 			CheckinTime: session.CheckinTime,
 			Area:        session.Area.Name,
 			PlatNomor:   session.PlatNomor,       // Include plat_nomor in response
-			HourlyRate:  session.Area.HourlyRate, // Ini adalah flat rate
+			HourlyRate:  currentCost,              // Return the actual rate used for this vehicle type
 			Duration:    durationMinutes,
 			CurrentCost: currentCost, // Flat rate, tidak per jam
 		})

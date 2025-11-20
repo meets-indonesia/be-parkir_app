@@ -109,8 +109,8 @@ func (u *parkingUsecase) Checkin(req *entities.CheckinRequest) (*entities.Checki
 	// Get current time for check-in
 	checkinTime := nowGMT7()
 
-	// Biaya parkir adalah FLAT RATE (bukan per jam)
-	totalCost := jukir.Area.HourlyRate // Flat rate
+	// Biaya parkir adalah FLAT RATE (bukan per jam) - berbeda untuk mobil dan motor
+	totalCost := jukir.Area.GetRateByVehicleType(req.VehicleType) // Flat rate berdasarkan jenis kendaraan
 
 	// Create parking session - payment is recorded at checkin
 	session := &entities.ParkingSession{
@@ -148,7 +148,7 @@ func (u *parkingUsecase) Checkin(req *entities.CheckinRequest) (*entities.Checki
 		SessionID:   session.ID,
 		CheckinTime: session.CheckinTime,
 		Area:        jukir.Area.Name,
-		HourlyRate:  jukir.Area.HourlyRate,
+		HourlyRate:  totalCost, // Return the actual rate used for this vehicle type
 	}, nil
 }
 
@@ -206,8 +206,8 @@ func (u *parkingUsecase) Checkout(req *entities.CheckoutRequest) (*entities.Chec
 	if duration < 0 {
 		duration = 0 // Handle edge case
 	}
-	// Biaya parkir adalah FLAT RATE (bukan per jam)
-	totalCost := session.Area.HourlyRate // Flat rate, bukan hourly rate
+	// Biaya parkir adalah FLAT RATE (bukan per jam) - berbeda untuk mobil dan motor
+	totalCost := session.Area.GetRateByVehicleType(session.VehicleType) // Flat rate berdasarkan jenis kendaraan
 
 	// For QR checkout, payment is automatically confirmed (no pending payment step)
 	confirmedAt := nowGMT7()
@@ -278,14 +278,14 @@ func (u *parkingUsecase) GetActiveSession(qrToken string) (*entities.ActiveSessi
 	if durationMinutes < 0 {
 		durationMinutes = 0
 	}
-	// Biaya parkir adalah FLAT RATE (bukan per jam)
-	currentCost := session.Area.HourlyRate // Flat rate, bukan hourly rate
+	// Biaya parkir adalah FLAT RATE (bukan per jam) - berbeda untuk mobil dan motor
+	currentCost := session.Area.GetRateByVehicleType(session.VehicleType) // Flat rate berdasarkan jenis kendaraan
 
 	return &entities.ActiveSessionResponse{
 		SessionID:   session.ID,
 		CheckinTime: session.CheckinTime,
 		Area:        session.Area.Name,
-		HourlyRate:  session.Area.HourlyRate, // Ini sebenarnya flat rate
+		HourlyRate:  currentCost, // Return the actual rate used for this vehicle type
 		Duration:    durationMinutes,
 		CurrentCost: currentCost, // Flat rate
 	}, nil
@@ -306,13 +306,14 @@ func (u *parkingUsecase) GetActiveSessionByID(sessionID uint) (*entities.ActiveS
 		durationMinutes = 0
 	}
 
-	currentCost := session.Area.HourlyRate // Flat rate
+	// Biaya parkir adalah FLAT RATE (bukan per jam) - berbeda untuk mobil dan motor
+	currentCost := session.Area.GetRateByVehicleType(session.VehicleType) // Flat rate berdasarkan jenis kendaraan
 
 	return &entities.ActiveSessionResponse{
 		SessionID:   session.ID,
 		CheckinTime: session.CheckinTime,
 		Area:        session.Area.Name,
-		HourlyRate:  session.Area.HourlyRate, // Flat rate label retained for compatibility
+		HourlyRate:  currentCost, // Return the actual rate used for this vehicle type
 		Duration:    durationMinutes,
 		CurrentCost: currentCost,
 	}, nil
@@ -410,8 +411,8 @@ func (u *parkingUsecase) ManualCheckin(jukirID uint, req *entities.ManualCheckin
 		return nil, err
 	}
 
-	// Biaya parkir adalah FLAT RATE (bukan per jam)
-	totalCost := jukir.Area.HourlyRate // Flat rate
+	// Biaya parkir adalah FLAT RATE (bukan per jam) - berbeda untuk mobil dan motor
+	totalCost := jukir.Area.GetRateByVehicleType(req.VehicleType) // Flat rate berdasarkan jenis kendaraan
 
 	// Create manual parking session - payment is recorded at checkin
 	session := &entities.ParkingSession{
@@ -456,7 +457,7 @@ func (u *parkingUsecase) ManualCheckin(jukirID uint, req *entities.ManualCheckin
 		VehicleType: string(session.VehicleType),
 		WaktuMasuk:  session.CheckinTime,
 		Area:        jukir.Area.Name,
-		ParkingCost: jukir.Area.HourlyRate, // Use area's hourly rate
+		ParkingCost: totalCost, // Use the actual rate for this vehicle type
 	}, nil
 }
 
@@ -499,8 +500,8 @@ func (u *parkingUsecase) ManualCheckout(jukirID uint, req *entities.ManualChecko
 	if duration < 0 {
 		duration = 0 // Handle edge case
 	}
-	// Biaya parkir adalah FLAT RATE (bukan per jam)
-	totalCost := session.Area.HourlyRate // Flat rate, bukan hourly rate
+	// Biaya parkir adalah FLAT RATE (bukan per jam) - berbeda untuk mobil dan motor
+	totalCost := session.Area.GetRateByVehicleType(session.VehicleType) // Flat rate berdasarkan jenis kendaraan
 
 	// For manual checkout, payment is automatically confirmed (no pending payment step)
 	confirmedAt := nowGMT7()

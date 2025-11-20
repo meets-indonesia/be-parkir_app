@@ -601,7 +601,8 @@ func (h *Handlers) GetAllSessions(c *gin.Context) {
 // @Param latitude formData number true "Latitude"
 // @Param longitude formData number true "Longitude"
 // @Param regional formData string true "Regional"
-// @Param hourly_rate formData number true "Hourly Rate"
+// @Param hourly_rate_mobil formData number true "Hourly Rate for Mobil"
+// @Param hourly_rate_motor formData number true "Hourly Rate for Motor"
 // @Param max_mobil formData integer false "Max Mobil"
 // @Param max_motor formData integer false "Max Motor"
 // @Param status_operasional formData string true "Status Operasional (buka/tutup/maintenance)"
@@ -671,13 +672,31 @@ func (h *Handlers) CreateParkingArea(c *gin.Context) {
 			}
 		}
 		req.Regional = c.PostForm("regional")
-		if rateStr := c.PostForm("hourly_rate"); rateStr != "" {
-			if v, err := strconv.ParseFloat(rateStr, 64); err == nil {
-				req.HourlyRate = v
-			} else {
-				c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid hourly_rate"})
-				return
-			}
+
+		// hourly_rate_mobil is required
+		rateMobilStr := c.PostForm("hourly_rate_mobil")
+		if rateMobilStr == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "hourly_rate_mobil is required"})
+			return
+		}
+		if v, err := strconv.ParseFloat(rateMobilStr, 64); err == nil {
+			req.HourlyRateMobil = v
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid hourly_rate_mobil"})
+			return
+		}
+
+		// hourly_rate_motor is required
+		rateMotorStr := c.PostForm("hourly_rate_motor")
+		if rateMotorStr == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "hourly_rate_motor is required"})
+			return
+		}
+		if v, err := strconv.ParseFloat(rateMotorStr, 64); err == nil {
+			req.HourlyRateMotor = v
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid hourly_rate_motor"})
+			return
 		}
 		if mm := c.PostForm("max_mobil"); mm != "" {
 			if v, err := strconv.Atoi(mm); err == nil {
@@ -1786,9 +1805,14 @@ func (h *Handlers) UpdateParkingArea(c *gin.Context) {
 		if regional := c.PostForm("regional"); regional != "" {
 			req.Regional = &regional
 		}
-		if rateStr := c.PostForm("hourly_rate"); rateStr != "" {
+		if rateStr := c.PostForm("hourly_rate_mobil"); rateStr != "" {
 			if v, err := strconv.ParseFloat(rateStr, 64); err == nil {
-				req.HourlyRate = &v
+				req.HourlyRateMobil = &v
+			}
+		}
+		if rateStr := c.PostForm("hourly_rate_motor"); rateStr != "" {
+			if v, err := strconv.ParseFloat(rateStr, 64); err == nil {
+				req.HourlyRateMotor = &v
 			}
 		}
 		if mm := c.PostForm("max_mobil"); mm != "" {

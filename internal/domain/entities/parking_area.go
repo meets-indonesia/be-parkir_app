@@ -30,7 +30,8 @@ type ParkingArea struct {
 	Longitude         float64        `json:"longitude" gorm:"not null" validate:"required,longitude"`
 	Regional          string         `json:"regional" gorm:"type:varchar(50)" validate:"required,max=50"`
 	Image             *string        `json:"image,omitempty" gorm:"type:text"`
-	HourlyRate        float64        `json:"hourly_rate" gorm:"not null" validate:"required,min=0"`
+	HourlyRateMobil   float64        `json:"hourly_rate_mobil" gorm:"not null;default:0" validate:"required,min=0"`
+	HourlyRateMotor   float64        `json:"hourly_rate_motor" gorm:"not null;default:0" validate:"required,min=0"`
 	Status            AreaStatus     `json:"status" gorm:"type:varchar(20);not null;default:'active'" validate:"required,oneof=active inactive maintenance"`
 	MaxMobil          *int           `json:"max_mobil,omitempty" gorm:"type:int;default:0"`
 	MaxMotor          *int           `json:"max_motor,omitempty" gorm:"type:int;default:0"`
@@ -52,7 +53,8 @@ type CreateParkingAreaRequest struct {
 	Longitude float64 `json:"longitude" validate:"required,longitude"`
 	Regional  string  `json:"regional" validate:"required,max=50"`
 	// image dikirim melalui multipart form-data, bukan JSON
-	HourlyRate        float64   `json:"hourly_rate" validate:"required,min=0"`
+	HourlyRateMobil   float64   `json:"hourly_rate_mobil" validate:"required,min=0"`
+	HourlyRateMotor   float64   `json:"hourly_rate_motor" validate:"required,min=0"`
 	MaxMobil          *int      `json:"max_mobil,omitempty" validate:"omitempty,min=0"`
 	MaxMotor          *int      `json:"max_motor,omitempty" validate:"omitempty,min=0"`
 	StatusOperasional string    `json:"status_operasional" validate:"required,oneof=buka tutup maintenance"`
@@ -67,7 +69,8 @@ type UpdateParkingAreaRequest struct {
 	Regional  *string  `json:"regional,omitempty" validate:"omitempty,max=50"`
 	Image     *string  `json:"image,omitempty"`
 	// image update via endpoint yang sama: multipart form-data opsional
-	HourlyRate        *float64    `json:"hourly_rate,omitempty" validate:"omitempty,min=0"`
+	HourlyRateMobil   *float64    `json:"hourly_rate_mobil,omitempty" validate:"omitempty,min=0"`
+	HourlyRateMotor   *float64    `json:"hourly_rate_motor,omitempty" validate:"omitempty,min=0"`
 	Status            *AreaStatus `json:"status,omitempty" validate:"omitempty,oneof=active inactive maintenance"`
 	MaxMobil          *int        `json:"max_mobil,omitempty" validate:"omitempty,min=0"`
 	MaxMotor          *int        `json:"max_motor,omitempty" validate:"omitempty,min=0"`
@@ -84,4 +87,12 @@ type NearbyAreasRequest struct {
 type NearbyAreasResponse struct {
 	Areas []ParkingArea `json:"areas"`
 	Count int64         `json:"count"`
+}
+
+// GetRateByVehicleType returns the appropriate rate based on vehicle type
+func (p *ParkingArea) GetRateByVehicleType(vehicleType VehicleType) float64 {
+	if vehicleType == VehicleTypeMobil {
+		return p.HourlyRateMobil
+	}
+	return p.HourlyRateMotor
 }

@@ -337,12 +337,13 @@ func (u *adminUsecase) GetOverview(vehicleType *string, startTime, endTime *time
 
 	for _, session := range sessions {
 		if session.SessionStatus == entities.SessionStatusActive && session.CheckoutTime != nil && session.Duration != nil {
-			// Get area hourly rate
+			// Get area hourly rate based on vehicle type
 			area := areaMap[session.AreaID]
 			// Calculate estimated cost
 			minutes := float64(*session.Duration)
 			hours := minutes / 60.0
-			estimatedRevenue += area.HourlyRate * hours
+			rate := area.GetRateByVehicleType(session.VehicleType)
+			estimatedRevenue += rate * hours
 		} else if session.SessionStatus == entities.SessionStatusPendingPayment && session.TotalCost != nil {
 			estimatedRevenue += *session.TotalCost
 		} else if session.IsManualRecord && session.TotalCost != nil {
@@ -477,7 +478,8 @@ func (u *adminUsecase) GetJukirsWithRevenue(limit, offset int, vehicleType *stri
 				"address":     jukir.Area.Address,
 				"latitude":    jukir.Area.Latitude,
 				"longitude":   jukir.Area.Longitude,
-				"hourly_rate": jukir.Area.HourlyRate,
+				"hourly_rate_mobil": jukir.Area.HourlyRateMobil,
+				"hourly_rate_motor": jukir.Area.HourlyRateMotor,
 				"status":      jukir.Area.Status,
 			},
 			"revenue":  roundCurrency(revenue),
@@ -834,7 +836,8 @@ func (u *adminUsecase) GetTotalRevenue(startTime, endTime *time.Time, vehicleTyp
 			area := areaMap[session.AreaID]
 			minutes := int(time.Since(session.CheckinTime).Minutes())
 			hours := float64(minutes) / 60.0
-			estimatedRevenue += area.HourlyRate * hours
+			rate := area.GetRateByVehicleType(session.VehicleType)
+			estimatedRevenue += rate * hours
 		} else if session.SessionStatus == entities.SessionStatusPendingPayment && session.TotalCost != nil {
 			estimatedRevenue += *session.TotalCost
 		} else if session.IsManualRecord && session.TotalCost != nil {
@@ -911,7 +914,8 @@ func (u *adminUsecase) GetJukirsListWithRevenue(dateRange *string, vehicleType *
 				area := areaMap[session.AreaID]
 				minutes := int(time.Since(session.CheckinTime).Minutes())
 				hours := float64(minutes) / 60.0
-				estimatedRevenue += area.HourlyRate * hours
+				rate := area.GetRateByVehicleType(session.VehicleType)
+				estimatedRevenue += rate * hours
 			} else if session.SessionStatus == entities.SessionStatusPendingPayment && session.TotalCost != nil {
 				estimatedRevenue += *session.TotalCost
 			} else if session.IsManualRecord && session.TotalCost != nil {
@@ -1012,7 +1016,8 @@ func (u *adminUsecase) GetJukirByID(jukirID uint, dateRange *string) (map[string
 					area := areaMap[session.AreaID]
 					minutes := int(time.Since(session.CheckinTime).Minutes())
 					hours := float64(minutes) / 60.0
-					estimatedRevenue += area.HourlyRate * hours
+					rate := area.GetRateByVehicleType(session.VehicleType)
+			estimatedRevenue += rate * hours
 				} else if session.SessionStatus == entities.SessionStatusPendingPayment && session.TotalCost != nil {
 					estimatedRevenue += *session.TotalCost
 				} else if session.IsManualRecord && session.TotalCost != nil {
@@ -1051,7 +1056,8 @@ func (u *adminUsecase) GetJukirByID(jukirID uint, dateRange *string) (map[string
 							area := areaMap[session.AreaID]
 							minutes := int(time.Since(session.CheckinTime).Minutes())
 							hours := float64(minutes) / 60.0
-							dayEstimated += area.HourlyRate * hours
+							rate := area.GetRateByVehicleType(session.VehicleType)
+							dayEstimated += rate * hours
 						} else if session.SessionStatus == entities.SessionStatusPendingPayment && session.TotalCost != nil {
 							dayEstimated += *session.TotalCost
 						} else if session.IsManualRecord && session.TotalCost != nil {
@@ -1481,7 +1487,8 @@ func (u *adminUsecase) CreateParkingArea(req *entities.CreateParkingAreaRequest)
 		Latitude:          req.Latitude,
 		Longitude:         req.Longitude,
 		Regional:          req.Regional,
-		HourlyRate:        req.HourlyRate,
+		HourlyRateMobil:   req.HourlyRateMobil,
+		HourlyRateMotor:   req.HourlyRateMotor,
 		Status:            entities.AreaStatusActive,
 		MaxMobil:          req.MaxMobil,
 		MaxMotor:          req.MaxMotor,
@@ -1518,8 +1525,11 @@ func (u *adminUsecase) UpdateParkingArea(areaID uint, req *entities.UpdateParkin
 	if req.Regional != nil {
 		area.Regional = *req.Regional
 	}
-	if req.HourlyRate != nil {
-		area.HourlyRate = *req.HourlyRate
+	if req.HourlyRateMobil != nil {
+		area.HourlyRateMobil = *req.HourlyRateMobil
+	}
+	if req.HourlyRateMotor != nil {
+		area.HourlyRateMotor = *req.HourlyRateMotor
 	}
 	if req.Status != nil {
 		area.Status = *req.Status
@@ -1549,7 +1559,8 @@ func (u *adminUsecase) UpdateParkingArea(areaID uint, req *entities.UpdateParkin
 		Latitude:          area.Latitude,
 		Longitude:         area.Longitude,
 		Regional:          area.Regional,
-		HourlyRate:        area.HourlyRate,
+		HourlyRateMobil:   area.HourlyRateMobil,
+		HourlyRateMotor:   area.HourlyRateMotor,
 		Status:            area.Status,
 		MaxMobil:          area.MaxMobil,
 		MaxMotor:          area.MaxMotor,
@@ -1603,7 +1614,8 @@ func (u *adminUsecase) GetParkingAreas(regional *string) ([]map[string]interface
 			"latitude":           area.Latitude,
 			"longitude":          area.Longitude,
 			"regional":           area.Regional,
-			"hourly_rate":        area.HourlyRate,
+			"hourly_rate_mobil":  area.HourlyRateMobil,
+			"hourly_rate_motor":   area.HourlyRateMotor,
 			"status":             area.Status,
 			"max_mobil":          area.MaxMobil,
 			"max_motor":          area.MaxMotor,
@@ -1686,7 +1698,8 @@ func (u *adminUsecase) GetParkingAreaDetail(areaID uint) (map[string]interface{}
 		"longitude":          area.Longitude,
 		"regional":           area.Regional,
 		"image":              area.Image,
-		"hourly_rate":        area.HourlyRate,
+		"hourly_rate_mobil":  area.HourlyRateMobil,
+		"hourly_rate_motor":  area.HourlyRateMotor,
 		"status":             area.Status,
 		"max_mobil":          area.MaxMobil,
 		"max_motor":          area.MaxMotor,
@@ -2324,7 +2337,8 @@ func (u *adminUsecase) ExportRevenueReport(startTime, endTime *time.Time, region
 				area := areaMap[session.AreaID]
 				minutes := int(time.Since(session.CheckinTime).Minutes())
 				hours := float64(minutes) / 60.0
-				estimatedRevenue += area.HourlyRate * hours
+				rate := area.GetRateByVehicleType(session.VehicleType)
+			estimatedRevenue += rate * hours
 			} else if session.SessionStatus == entities.SessionStatusPendingPayment && session.TotalCost != nil {
 				estimatedRevenue += *session.TotalCost
 			} else if session.IsManualRecord && session.TotalCost != nil {
@@ -3732,14 +3746,16 @@ func (u *adminUsecase) ImportAreasAndJukirsFromCSV(reader io.Reader, regional st
 			continue
 		}
 
-		hourlyRate := 2000.0
+		hourlyRateMobil := 2000.0
+		hourlyRateMotor := 2000.0
 		if srpMobilStr != "" {
 			if rate, err := strconv.ParseFloat(strings.ReplaceAll(srpMobilStr, ",", "."), 64); err == nil {
-				hourlyRate = rate
+				hourlyRateMobil = rate
 			}
-		} else if srpMotorStr != "" {
+		}
+		if srpMotorStr != "" {
 			if rate, err := strconv.ParseFloat(strings.ReplaceAll(srpMotorStr, ",", "."), 64); err == nil {
-				hourlyRate = rate
+				hourlyRateMotor = rate
 			}
 		}
 
@@ -3768,7 +3784,8 @@ func (u *adminUsecase) ImportAreasAndJukirsFromCSV(reader io.Reader, regional st
 					Latitude:          latitude,
 					Longitude:         longitude,
 					Regional:          regional,
-					HourlyRate:        hourlyRate,
+					HourlyRateMobil:   hourlyRateMobil,
+					HourlyRateMotor:   hourlyRateMotor,
 					Status:            entities.AreaStatusActive,
 					StatusOperasional: "buka",
 					JenisArea:         entities.JenisAreaOutdoor,
