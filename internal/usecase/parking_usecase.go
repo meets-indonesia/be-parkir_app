@@ -193,9 +193,15 @@ func (u *parkingUsecase) Checkout(req *entities.CheckoutRequest) (*entities.Chec
 		return nil, errors.New("QR code does not match the check-in location")
 	}
 
+	// Reload area to ensure HourlyRateMobil and HourlyRateMotor are loaded
+	area, err := u.areaRepo.GetByID(session.AreaID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load parking area: %w", err)
+	}
+
 	// Optional GPS verification
 	if req.Latitude != nil && req.Longitude != nil {
-		if err := u.ensureWithinArea(*req.Latitude, *req.Longitude, jukir.Area); err != nil {
+		if err := u.ensureWithinArea(*req.Latitude, *req.Longitude, *area); err != nil {
 			return nil, err
 		}
 	}
@@ -207,15 +213,10 @@ func (u *parkingUsecase) Checkout(req *entities.CheckoutRequest) (*entities.Chec
 		duration = 0 // Handle edge case
 	}
 	// Biaya parkir adalah FLAT RATE (bukan per jam) - berbeda untuk mobil dan motor
-	totalCost := session.Area.GetRateByVehicleType(session.VehicleType) // Flat rate berdasarkan jenis kendaraan
+	totalCost := area.GetRateByVehicleType(session.VehicleType) // Flat rate berdasarkan jenis kendaraan
 
 	// For QR checkout, payment is automatically confirmed (no pending payment step)
 	confirmedAt := nowGMT7()
-
-	// Ensure session has area loaded
-	if session.Area.ID == 0 {
-		return nil, errors.New("parking area information not found for this session")
-	}
 
 	// Update session - directly mark as completed since checkout means payment is already received
 	session.CheckoutTime = &checkoutTime
@@ -225,7 +226,7 @@ func (u *parkingUsecase) Checkout(req *entities.CheckoutRequest) (*entities.Chec
 	session.PaymentStatus = entities.PaymentStatusPaid
 
 	if err := u.sessionRepo.Update(session); err != nil {
-		return nil, errors.New("failed to update parking session")
+		return nil, fmt.Errorf("failed to update parking session: %w", err)
 	}
 
 	// Update existing payment record (payment was already created at checkin)
@@ -512,7 +513,13 @@ func (u *parkingUsecase) ManualCheckout(jukirID uint, req *entities.ManualChecko
 		return nil, errors.New("parking area information not found for this session")
 	}
 
-	if err := u.ensureWithinArea(*req.Latitude, *req.Longitude, session.Area); err != nil {
+	// Reload area to ensure HourlyRateMobil and HourlyRateMotor are loaded
+	area, err := u.areaRepo.GetByID(session.AreaID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load parking area: %w", err)
+	}
+
+	if err := u.ensureWithinArea(*req.Latitude, *req.Longitude, *area); err != nil {
 		return nil, err
 	}
 
@@ -525,7 +532,7 @@ func (u *parkingUsecase) ManualCheckout(jukirID uint, req *entities.ManualChecko
 		duration = 0 // Handle edge case
 	}
 	// Biaya parkir adalah FLAT RATE (bukan per jam) - berbeda untuk mobil dan motor
-	totalCost := session.Area.GetRateByVehicleType(session.VehicleType) // Flat rate berdasarkan jenis kendaraan
+	totalCost := area.GetRateByVehicleType(session.VehicleType) // Flat rate berdasarkan jenis kendaraan
 
 	// For manual checkout, payment is automatically confirmed (no pending payment step)
 	confirmedAt := nowGMT7()
@@ -538,7 +545,7 @@ func (u *parkingUsecase) ManualCheckout(jukirID uint, req *entities.ManualChecko
 	session.PaymentStatus = entities.PaymentStatusPaid
 
 	if err := u.sessionRepo.Update(session); err != nil {
-		return nil, errors.New("failed to update manual parking session")
+		return nil, fmt.Errorf("failed to update manual parking session: %w", err)
 	}
 
 	// Update existing payment record (payment was already created at checkin)

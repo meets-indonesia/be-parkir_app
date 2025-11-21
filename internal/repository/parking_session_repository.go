@@ -68,7 +68,17 @@ func (r *parkingSessionRepository) GetActiveByQRToken(qrToken string) (*entities
 }
 
 func (r *parkingSessionRepository) Update(session *entities.ParkingSession) error {
-	return r.db.Save(session).Error
+	// Use Where clause with ID to be explicit and avoid updating relations
+	// Only update the fields that are actually changed during checkout
+	return r.db.Model(&entities.ParkingSession{}).
+		Where("id = ?", session.ID).
+		Updates(map[string]interface{}{
+			"checkout_time":  session.CheckoutTime,
+			"duration":       session.Duration,
+			"total_cost":     session.TotalCost,
+			"session_status": session.SessionStatus,
+			"payment_status": session.PaymentStatus,
+		}).Error
 }
 
 func (r *parkingSessionRepository) Delete(id uint) error {
