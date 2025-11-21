@@ -212,6 +212,11 @@ func (u *parkingUsecase) Checkout(req *entities.CheckoutRequest) (*entities.Chec
 	// For QR checkout, payment is automatically confirmed (no pending payment step)
 	confirmedAt := nowGMT7()
 
+	// Ensure session has area loaded
+	if session.Area.ID == 0 {
+		return nil, errors.New("parking area information not found for this session")
+	}
+
 	// Update session - directly mark as completed since checkout means payment is already received
 	session.CheckoutTime = &checkoutTime
 	session.Duration = &duration
@@ -223,18 +228,32 @@ func (u *parkingUsecase) Checkout(req *entities.CheckoutRequest) (*entities.Chec
 		return nil, errors.New("failed to update parking session")
 	}
 
-	// Create payment record - directly mark as paid (no pending confirmation needed)
-	payment := &entities.Payment{
-		SessionID:     session.ID,
-		Amount:        totalCost,
-		PaymentMethod: entities.PaymentMethodCash,
-		Status:        entities.PaymentStatusPaid,
-		ConfirmedBy:   &jukir.ID,
-		ConfirmedAt:   &confirmedAt,
-	}
-
-	if err := u.paymentRepo.Create(payment); err != nil {
-		return nil, errors.New("failed to create payment record")
+	// Update existing payment record (payment was already created at checkin)
+	// Get existing payment for this session
+	payment, err := u.paymentRepo.GetBySessionID(session.ID)
+	if err != nil {
+		// If payment doesn't exist (shouldn't happen for QR records, but handle gracefully)
+		// Create new payment record
+		payment = &entities.Payment{
+			SessionID:     session.ID,
+			Amount:        totalCost,
+			PaymentMethod: entities.PaymentMethodCash,
+			Status:        entities.PaymentStatusPaid,
+			ConfirmedBy:   &jukir.ID,
+			ConfirmedAt:   &confirmedAt,
+		}
+		if err := u.paymentRepo.Create(payment); err != nil {
+			return nil, errors.New("failed to create payment record")
+		}
+	} else {
+		// Update existing payment with checkout information
+		payment.Amount = totalCost
+		payment.Status = entities.PaymentStatusPaid
+		payment.ConfirmedBy = &jukir.ID
+		payment.ConfirmedAt = &confirmedAt
+		if err := u.paymentRepo.Update(payment); err != nil {
+			return nil, errors.New("failed to update payment record")
+		}
 	}
 
 	// Notify jukir about checkout via SSE
@@ -488,6 +507,11 @@ func (u *parkingUsecase) ManualCheckout(jukirID uint, req *entities.ManualChecko
 		return nil, errors.New("latitude and longitude are required for manual checkout")
 	}
 
+	// Ensure session has area loaded
+	if session.Area.ID == 0 {
+		return nil, errors.New("parking area information not found for this session")
+	}
+
 	if err := u.ensureWithinArea(*req.Latitude, *req.Longitude, session.Area); err != nil {
 		return nil, err
 	}
@@ -517,18 +541,32 @@ func (u *parkingUsecase) ManualCheckout(jukirID uint, req *entities.ManualChecko
 		return nil, errors.New("failed to update manual parking session")
 	}
 
-	// Create payment record - directly mark as paid (no pending confirmation needed for manual records)
-	payment := &entities.Payment{
-		SessionID:     session.ID,
-		Amount:        totalCost,
-		PaymentMethod: entities.PaymentMethodCash,
-		Status:        entities.PaymentStatusPaid,
-		ConfirmedBy:   &jukirID,
-		ConfirmedAt:   &confirmedAt,
-	}
-
-	if err := u.paymentRepo.Create(payment); err != nil {
-		return nil, errors.New("failed to create payment record")
+	// Update existing payment record (payment was already created at checkin)
+	// Get existing payment for this session
+	payment, err := u.paymentRepo.GetBySessionID(session.ID)
+	if err != nil {
+		// If payment doesn't exist (shouldn't happen for manual records, but handle gracefully)
+		// Create new payment record
+		payment = &entities.Payment{
+			SessionID:     session.ID,
+			Amount:        totalCost,
+			PaymentMethod: entities.PaymentMethodCash,
+			Status:        entities.PaymentStatusPaid,
+			ConfirmedBy:   &jukirID,
+			ConfirmedAt:   &confirmedAt,
+		}
+		if err := u.paymentRepo.Create(payment); err != nil {
+			return nil, errors.New("failed to create payment record")
+		}
+	} else {
+		// Update existing payment with checkout information
+		payment.Amount = totalCost
+		payment.Status = entities.PaymentStatusPaid
+		payment.ConfirmedBy = &jukirID
+		payment.ConfirmedAt = &confirmedAt
+		if err := u.paymentRepo.Update(payment); err != nil {
+			return nil, errors.New("failed to update payment record")
+		}
 	}
 
 	platNomor := ""
