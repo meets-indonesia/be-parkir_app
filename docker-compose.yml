@@ -67,7 +67,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Uncomment jika ada folder migrations
-      # - ./migrations:/docker-entrypoint-initdb.d
+      - ./migrations:/docker-entrypoint-initdb.d
     ports:
       - "5433:5432"
     healthcheck:

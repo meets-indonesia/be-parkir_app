@@ -18,6 +18,13 @@ COMMENT ON COLUMN parking_areas.hourly_rate_mobil IS 'Flat rate for mobil (car) 
 COMMENT ON COLUMN parking_areas.hourly_rate_motor IS 'Flat rate for motor (motorcycle) parking';
 
 -- Remove old hourly_rate column (after migration is complete)
--- Note: Uncomment the following line after verifying the migration works correctly
--- ALTER TABLE parking_areas DROP COLUMN IF EXISTS hourly_rate;
+-- First, ensure all existing data has been migrated
+UPDATE parking_areas 
+SET 
+    hourly_rate_mobil = COALESCE(hourly_rate_mobil, COALESCE(hourly_rate, 0.00)),
+    hourly_rate_motor = COALESCE(hourly_rate_motor, COALESCE(hourly_rate, 0.00))
+WHERE hourly_rate_mobil = 0.00 OR hourly_rate_motor = 0.00;
+
+-- Now drop the old column
+ALTER TABLE parking_areas DROP COLUMN IF EXISTS hourly_rate;
 
