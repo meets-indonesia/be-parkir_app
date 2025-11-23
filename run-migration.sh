@@ -4,7 +4,7 @@
 echo "Running migration to drop hourly_rate column..."
 
 # Get postgres container name
-CONTAINER_NAME=$(docker-compose ps -q postgres)
+CONTAINER_NAME=$(docker compose ps -q postgres)
 
 if [ -z "$CONTAINER_NAME" ]; then
     echo "Error: Postgres container is not running. Please run 'docker-compose up -d' first."
