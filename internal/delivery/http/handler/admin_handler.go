@@ -634,6 +634,13 @@ func (h *Handlers) CreateParkingArea(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid request data", "error": err.Error()})
 			return
 		}
+		// Set default values if empty for JSON request
+		if req.StatusOperasional == "" {
+			req.StatusOperasional = "buka"
+		}
+		if req.JenisArea == "" {
+			req.JenisArea = entities.JenisAreaOutdoor
+		}
 	} else {
 		// Handle multipart form-data or form-urlencoded
 		if strings.HasPrefix(contentType, "multipart/form-data") {
@@ -708,8 +715,18 @@ func (h *Handlers) CreateParkingArea(c *gin.Context) {
 				req.MaxMotor = &v
 			}
 		}
-		req.StatusOperasional = c.PostForm("status_operasional")
-		req.JenisArea = entities.JenisArea(c.PostForm("jenis_area"))
+		// Set default values if empty
+		statusOperasional := c.PostForm("status_operasional")
+		if statusOperasional == "" {
+			statusOperasional = "buka"
+		}
+		req.StatusOperasional = statusOperasional
+
+		jenisArea := c.PostForm("jenis_area")
+		if jenisArea == "" {
+			jenisArea = "outdoor"
+		}
+		req.JenisArea = entities.JenisArea(jenisArea)
 	}
 
 	// Validate request

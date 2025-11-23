@@ -1497,7 +1497,7 @@ func (u *adminUsecase) CreateParkingArea(req *entities.CreateParkingAreaRequest)
 	}
 
 	if err := u.areaRepo.Create(area); err != nil {
-		return nil, errors.New("failed to create parking area")
+		return nil, fmt.Errorf("failed to create parking area: %w", err)
 	}
 
 	return area, nil
@@ -2568,7 +2568,7 @@ func (u *adminUsecase) GetAreaActivityDetail(areaID uint, startTime, endTime *ti
 		return nil, fmt.Errorf("failed to get sessions: %w", err)
 	}
 
-	// Create 15-minute intervals (only from 9am to 5pm)
+	// Create 15-minute intervals (only from 6am to 10pm)
 	intervals := u.create15MinuteIntervalsWorkHours(actualStart, actualEnd)
 	if len(intervals) == 0 {
 		return nil, errors.New("no intervals created")
@@ -2728,7 +2728,7 @@ func (u *adminUsecase) create15MinuteIntervals(start, end time.Time) []map[strin
 	return intervals
 }
 
-// create15MinuteIntervalsWorkHours creates time intervals of 15 minutes from 6am to 6pm (06:00-18:00)
+// create15MinuteIntervalsWorkHours creates time intervals of 15 minutes from 6am to 10pm (06:00-22:00)
 func (u *adminUsecase) create15MinuteIntervalsWorkHours(start, end time.Time) []map[string]interface{} {
 	var intervals []map[string]interface{}
 
@@ -2738,9 +2738,9 @@ func (u *adminUsecase) create15MinuteIntervalsWorkHours(start, end time.Time) []
 	dayCount := 0
 
 	for dayCount < maxDays {
-		// Set work hours: 6am to 6pm for this day
+		// Set work hours: 6am to 10pm for this day
 		workStart := time.Date(currentDate.Year(), currentDate.Month(), currentDate.Day(), 6, 0, 0, 0, currentDate.Location())
-		workEnd := time.Date(currentDate.Year(), currentDate.Month(), currentDate.Day(), 18, 0, 0, 0, currentDate.Location())
+		workEnd := time.Date(currentDate.Year(), currentDate.Month(), currentDate.Day(), 22, 0, 0, 0, currentDate.Location())
 
 		// Skip if work hours don't overlap with requested range
 		if workEnd.Before(start) || workStart.After(end) {
@@ -2752,30 +2752,30 @@ func (u *adminUsecase) create15MinuteIntervalsWorkHours(start, end time.Time) []
 			continue
 		}
 
-		// Adjust work hours to fit within requested range (but still within 06:00-18:00)
+		// Adjust work hours to fit within requested range (but still within 06:00-22:00)
 		if workStart.Before(start) && start.Hour() >= 6 {
-			// If start is after 6am but before 6pm, use start time
-			if start.Hour() < 18 {
+			// If start is after 6am but before 10pm, use start time
+			if start.Hour() < 22 {
 				workStart = time.Date(start.Year(), start.Month(), start.Day(), start.Hour(), start.Minute(), 0, 0, start.Location())
 				// Round down to nearest 15 minutes
 				workStart = workStart.Add(-time.Duration(workStart.Minute()%15) * time.Minute)
 			}
 		}
 
-		if workEnd.After(end) && end.Hour() >= 6 && end.Hour() < 18 {
+		if workEnd.After(end) && end.Hour() >= 6 && end.Hour() < 22 {
 			workEnd = end
 		}
 
-		// Only create intervals if work hours are valid (06:00-18:00)
-		if workStart.Hour() >= 6 && workStart.Hour() < 18 && workEnd.Hour() >= 6 && (workEnd.Hour() < 18 || (workEnd.Hour() == 18 && workEnd.Minute() == 0)) && !workStart.After(workEnd) {
+		// Only create intervals if work hours are valid (06:00-22:00)
+		if workStart.Hour() >= 6 && workStart.Hour() < 22 && workEnd.Hour() >= 6 && (workEnd.Hour() < 22 || (workEnd.Hour() == 22 && workEnd.Minute() == 0)) && !workStart.After(workEnd) {
 			// Create intervals for this day's work hours
 			current := workStart
 			intervalCount := 0
-			maxIntervalsPerDay := 48 // Max 12 hours * 4 intervals per hour
+			maxIntervalsPerDay := 64 // Max 16 hours * 4 intervals per hour
 
 			for intervalCount < maxIntervalsPerDay {
-				// Stop if we've reached or passed 6pm
-				if current.Hour() >= 18 || current.After(workEnd) {
+				// Stop if we've reached or passed 10pm
+				if current.Hour() >= 22 || current.After(workEnd) {
 					break
 				}
 
@@ -2784,13 +2784,13 @@ func (u *adminUsecase) create15MinuteIntervalsWorkHours(start, end time.Time) []
 					intervalEnd = workEnd
 				}
 
-				// Stop if interval end passes 6pm
-				if intervalEnd.Hour() > 18 || (intervalEnd.Hour() == 18 && intervalEnd.Minute() > 0) {
+				// Stop if interval end passes 10pm
+				if intervalEnd.Hour() > 22 || (intervalEnd.Hour() == 22 && intervalEnd.Minute() > 0) {
 					break
 				}
 
-				// Only add interval if it's within work hours (06:00-18:00)
-				if current.Hour() >= 6 && current.Hour() < 18 {
+				// Only add interval if it's within work hours (06:00-22:00)
+				if current.Hour() >= 6 && current.Hour() < 22 {
 					// Add date to interval for frontend filtering
 					dateStr := current.Format("2006-01-02")
 					intervals = append(intervals, map[string]interface{}{
@@ -3006,7 +3006,7 @@ func (u *adminUsecase) GetJukirActivity(startTime, endTime *time.Time, jukirID *
 }
 
 // GetJukirActivityDetail returns detailed activity monitoring data for a specific jukir
-// Breakdown per 15 minutes interval from 6am to 6pm like the CSV format
+// Breakdown per 15 minutes interval from 6am to 10pm like the CSV format
 func (u *adminUsecase) GetJukirActivityDetail(jukirID uint, startTime, endTime *time.Time) (map[string]interface{}, error) {
 	// Get jukir
 	jukir, err := u.jukirRepo.GetByID(jukirID)
@@ -3055,7 +3055,7 @@ func (u *adminUsecase) GetJukirActivityDetail(jukirID uint, startTime, endTime *
 		}
 	}
 
-	// Create 15-minute intervals (only from 6am to 6pm)
+	// Create 15-minute intervals (only from 6am to 10pm)
 	intervals := u.create15MinuteIntervalsWorkHours(actualStart, actualEnd)
 	if len(intervals) == 0 {
 		return nil, errors.New("no intervals created")
